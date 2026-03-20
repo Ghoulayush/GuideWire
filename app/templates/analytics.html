@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Analytics - Gig Worker Insurance</title>
+    <link rel="stylesheet" href="/static/main.css" />
+    <script src="/static/theme.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body class="theme-dark">
+    <header>
+      <nav class="top-nav">
+        <div class="brand">GigShield</div>
+        <div class="nav-actions">
+          <a href="/" class="nav-link">Console</a>
+          <button id="theme-toggle" class="nav-btn toggle" type="button">Dark</button>
+        </div>
+      </nav>
+      <div class="hero-copy small">
+        <h1>Portfolio Analytics</h1>
+        <p>Track income protected, disruption frequency, and triggered payouts.</p>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section>
+        <h2>Key metrics</h2>
+        <div class="card stats">
+          <div><span>Total workers</span><strong id="m-workers">{{ metrics.total_workers }}</strong></div>
+          <div><span>Active policies</span><strong id="m-policies">{{ metrics.active_policies }}</strong></div>
+          <div><span>Total claims</span><strong id="m-claims">{{ metrics.total_claims }}</strong></div>
+          <div><span>Approved claims</span><strong id="m-approved">{{ metrics.approved_claims }}</strong></div>
+          <div><span>Total payout (₹)</span><strong id="m-payout">{{ metrics.total_payout }}</strong></div>
+          <div><span>Avg risk score</span><strong id="m-risk">{{ metrics.avg_risk_score }}</strong></div>
+        </div>
+      </section>
+
+      <section class="wide">
+        <h2>Disruptions by type</h2>
+        <div class="card">
+          <canvas id="disruptionChart" height="80"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      async function loadMetrics() {
+        const res = await fetch('/analytics/metrics');
+        const data = await res.json();
+
+        const ctx = document.getElementById('disruptionChart').getContext('2d');
+        const labels = data.disruption_counts.map(d => d.type);
+        const values = data.disruption_counts.map(d => d.count);
+
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Events',
+              data: values,
+              backgroundColor: '#2563eb',
+            }],
+          },
+          options: {
+            plugins: { legend: { display: false } },
+          },
+        });
+      }
+
+      loadMetrics();
+    </script>
+  </body>
+</html>
