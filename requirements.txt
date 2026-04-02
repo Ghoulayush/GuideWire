@@ -10,3 +10,8 @@ scikit-learn
 joblib
 jinja2
 requests
+jinja2
+requests
+# Fraud / image deps
+pillow
+imagehash
