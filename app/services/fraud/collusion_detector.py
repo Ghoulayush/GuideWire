@@ -9,6 +9,7 @@ from typing import List, Dict, Any
 import math
 import numpy as np
 from sklearn.cluster import DBSCAN
+from .base_detector import standardize_result
 
 
 def _haversine_km(lat1, lon1, lat2, lon2):
@@ -97,3 +98,25 @@ class CollusionRingDetector:
             })
 
         return CollusionResult(clusters=results, fraud_score=total_fraud_score)
+
+    def detect_rings(self, claims: List[Dict[str, Any]]):
+        """Return standardized FraudResult for collusion analysis."""
+        coll_res = self.analyze_claims(claims)
+
+        fraud_score = int(coll_res.fraud_score)
+        if fraud_score >= 70:
+            action = "REJECT"
+        elif fraud_score >= 40:
+            action = "REVIEW"
+        else:
+            action = "APPROVE"
+
+        raw = {
+            "fraud_score": fraud_score,
+            "action": action,
+            "reason": f"Detected {len(coll_res.clusters)} clusters, top_score={fraud_score}",
+            "confidence": int(min(100, max(0, fraud_score if fraud_score else 50))),
+            "metadata": {"clusters": coll_res.clusters},
+        }
+
+        return standardize_result(raw, "CollusionRingDetector")

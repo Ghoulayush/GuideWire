@@ -13,6 +13,7 @@ from typing import List, Dict, Any
 from statistics import mean
 import numpy as np
 from sklearn.cluster import DBSCAN
+from .base_detector import standardize_result
 
 
 def _haversine_km(lat1, lon1, lat2, lon2):
@@ -119,3 +120,43 @@ class LocationSpoofingDetector:
             fraud_score=combined,
             details={"n_points": len(points), "pairs_checked": total_pairs, "std_disp": std_disp, "clusters": n_clusters},
         )
+
+    def detect(self, gps_history: list):
+        """Return standardized FraudResult. Accepts either list of dict points
+        or list of (lat, lon) tuples for convenience in tests.
+        """
+        # Normalize input to list of dicts expected by evaluate()
+        points: List[Dict[str, Any]] = []
+        if not gps_history:
+            raw = {"fraud_score": 0, "action": "APPROVE", "reason": "no gps data", "confidence": 100, "metadata": {"n_points": 0}}
+            return standardize_result(raw, "LocationSpoofingDetector")
+
+        for i, p in enumerate(gps_history):
+            if isinstance(p, (list, tuple)) and len(p) >= 2:
+                lat, lon = float(p[0]), float(p[1])
+                points.append({"lat": lat, "lon": lon, "ts": datetime.utcnow().timestamp() + i})
+            elif isinstance(p, dict):
+                points.append(p)
+            else:
+                # Unknown format; skip
+                continue
+
+        loc_res = self.evaluate(points)
+
+        fraud_score = int(loc_res.fraud_score)
+        if fraud_score >= 80:
+            action = "REJECT"
+        elif fraud_score >= 50:
+            action = "REVIEW"
+        else:
+            action = "APPROVE"
+
+        raw = {
+            "fraud_score": fraud_score,
+            "action": action,
+            "reason": f"Location anomaly score {fraud_score}",
+            "confidence": int(min(100, max(0, fraud_score))),
+            "metadata": loc_res.details,
+        }
+
+        return standardize_result(raw, "LocationSpoofingDetector")

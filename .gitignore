@@ -1,0 +1,27 @@
+# Virtual environments
+.venv
+.venv-*
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+.env.local
+
+# Node modules
+frontend/node_modules/
+frontend/.next/
+
+# IDE files
+.vscode/
+.idea/
+
+# Model files (optional - can be generated)
+models/*.pkl
+models/*.h5
+
+# Logs
+*.log
+npm-debug.log*

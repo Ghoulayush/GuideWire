@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, List
 from uuid import uuid4
 
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, Form, Request, Body
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,13 +21,27 @@ from .schemas import (
 )
 from .services.analytics import build_metrics
 from .services.fraud import FraudEngine
-from .services.ml_risk_model import risk_model
+from .services.ml_risk import risk_model
 from .services.premium_calculator import premium_calculator
 from .services.weather_api import OpenWeatherMapClient
 from .services.risk import RiskInput, calculate_risk
 from .services.triggers import DisruptionInput, evaluate_triggers
 
 app = FastAPI(title="Gig Worker Parametric Insurance Platform")
+
+# ========== CORS MIDDLEWARE - Allows frontend to connect ==========
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ========== STARTUP EVENT - INITIALIZE ML MODEL ==========
@@ -248,6 +263,7 @@ async def trigger_event(
     
     message = "ℹ️ No payout triggered; event below threshold."
     fraud_signals = []
+    fraud_data_for_api = None
     
     if triggered:
         policy = next((p for p in POLICIES if p.worker_id == worker_id), None)
@@ -263,17 +279,29 @@ async def trigger_event(
                 created_at=datetime.utcnow(),
             )
             
-            # Run fraud detection
-            fraud_signals = fraud_engine.evaluate_claim(claim)
+            # Run fraud detection (returns standardized dict)
+            fraud_result = fraud_engine.evaluate_claim(claim)
+
+            # Backwards-compatible signals for UI/templating
+            fraud_signals = fraud_result.get('legacy_signals', [])
             
-            # Check if fraud detected
-            if any(s.severity >= 4 for s in fraud_signals):
+            # Prepare fraud data for API response (for frontend)
+            fraud_data_for_api = {
+                "fraud_score": fraud_result.get('fraud_score', 0),
+                "action": fraud_result.get('action', 'APPROVE'),
+                "final_decision": fraud_result.get('final_decision', ''),
+                "reasons": fraud_result.get('reasons', []),
+                "detector_results": fraud_result.get('detector_results', [])
+            }
+
+            # Decide final action
+            if fraud_result.get('action') == 'REJECT' or fraud_result.get('fraud_score', 0) >= 70:
                 claim.status = ClaimStatus.REJECTED
                 claim.approved_payout = 0.0
-                message = f"🚫 Claim REJECTED by AI Fraud Detection! Fraud score: {max(s.severity for s in fraud_signals) if fraud_signals else 0}/5"
+                message = f"🚫 Claim REJECTED by AI Fraud Detection! Fraud score: {fraud_result.get('fraud_score', 0)}/100"
             else:
                 message = f"✅ Auto-claim APPROVED! ₹{model_payout} will be credited to your UPI within seconds."
-            
+
             CLAIMS.append(claim)
         else:
             message = "⚠️ No active policy found for worker. Cannot process claim."
@@ -292,11 +320,64 @@ async def trigger_event(
             "metrics": metrics,
             "message": message,
             "fraud_signals": fraud_signals,
+            "fraud_data": fraud_data_for_api,
             "current_worker": current_worker,
             "current_risk": current_risk,
             "current_policy": current_policy,
         },
     )
+
+
+# ========== JSON API ENDPOINTS FOR FRONTEND ==========
+
+@app.get("/policies")
+async def get_policies_json():
+    """Return all policies as JSON for frontend"""
+    return [
+        {
+            "policy_id": p.policy_id,
+            "worker_id": p.worker_id,
+            "weekly_premium": p.weekly_premium,
+            "coverage_per_week": p.coverage_per_week
+        }
+        for p in POLICIES
+    ]
+
+
+@app.get("/claims")
+async def get_claims_json():
+    """Return all claims as JSON for frontend"""
+    return [
+        {
+            "claim_id": c.claim_id,
+            "worker_id": c.worker_id,
+            "status": c.status.value,
+            "approved_payout": c.approved_payout,
+            "claimed_income_loss": c.claimed_income_loss
+        }
+        for c in CLAIMS
+    ]
+
+
+@app.get("/workers")
+async def get_workers_json():
+    """Return all workers as JSON for frontend"""
+    return list(WORKERS.values())
+
+
+@app.get("/risks")
+async def get_risks_json():
+    """Return all risk profiles as JSON for frontend"""
+    return [
+        {
+            "worker_id": r.worker_id,
+            "city": r.city,
+            "risk_score": r.risk_score,
+            "risk_band": r.risk_band,
+            "suggested_weekly_premium": r.suggested_weekly_premium
+        }
+        for r in RISKS
+    ]
 
 
 # ========== ANALYTICS PAGES ==========
@@ -328,7 +409,7 @@ async def analytics_metrics():
     return build_metrics(RISKS, POLICIES, CLAIMS, EVENTS)
 
 
-# ========== AI/ML TEST ENDPOINTS (For Demo & Debugging) ==========
+# ========== AI/ML TEST ENDPOINTS ==========
 @app.get("/test/ml")
 async def test_ml_model():
     """Test endpoint to verify ML model is working"""
@@ -477,7 +558,15 @@ async def get_exclusions():
         "note": "This parametric insurance pays automatically when predefined triggers are met - no claims process needed"
     }
 
+
+# ========== ROOT ENDPOINT FOR TESTING ==========
+@app.get("/ping")
+async def ping():
+    """Simple ping endpoint for connectivity testing"""
+    return {"pong": True, "message": "GigShield backend is running!"}
+
+
 if __name__ == "__main__":
     import uvicorn
-    print("🔥 Starting server from main.py...")
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=False)  # reload=False
+    print("🔥 Starting GigShield server...")
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=False)
