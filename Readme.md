@@ -194,11 +194,7 @@ The Isolation Forest fraud model is retrained periodically on new claims data to
 
 ### Frontend
 
-**Phase 1 Prototype — HTML, CSS, JavaScript**
-
-- Core user flow built to validate onboarding, premium display, plan selection, and dashboard
-
-**Phase 2 onwards — Next.js + Tailwind CSS**
+**Next.js + Tailwind CSS (PWA)**
 
 - Next.js handles routing between screens: Onboarding → Plans → Dashboard
 - Tailwind CSS for fast, responsive UI — no CSS from scratch
@@ -219,7 +215,8 @@ The Isolation Forest fraud model is retrained periodically on new claims data to
 
 - Supabase provides free hosted PostgreSQL with a dashboard UI
 - Built-in auth (login/signup) — no need to build authentication
-- Four core tables: **workers** (profile, UPI, earnings tier), **policies** (active weekly coverage per worker), **claims** (trigger type, payout amount, fraud score, status), and **disruption_log** (all API-detected events by city and timestamp)
+- Four core tables: **workers** (profile, UPI, earnings tier), **policies** (active weekly coverage per worker), **claims** (trigger type, payout amount, fraud score, status), **disruption_events** (all API-detected events by city and timestamp)
+- Database schema defined in `schema.sql`
 
 ### ML / AI
 
@@ -247,6 +244,76 @@ The Isolation Forest fraud model is retrained periodically on new claims data to
 - Sandbox/test mode simulates UPI payments without real money
 - Demonstrates full payout flow in the demo
 - Not needed for Phase 1 — mentioned as planned integration
+
+---
+
+## 🚀 Setup Instructions
+
+### Prerequisites
+- Python 3.8+
+- Node.js 18+
+- Supabase account (free)
+- API keys for OpenWeatherMap, AQICN, Razorpay
+
+### Backend Setup
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Ghoulayush/GuideWire.git
+   cd GuideWire
+   ```
+
+2. **Install Python dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Configure environment variables:**
+   - Copy `.env` and update with your actual API keys and Supabase credentials
+   - Database URL should be in the format: `postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres`
+
+4. **Set up database:**
+   - Create a Supabase project
+   - Run the SQL in `schema.sql` in your Supabase SQL editor to create tables
+
+5. **Test database connection:**
+   ```bash
+   python test_db.py
+   ```
+
+6. **Run the backend:**
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+### Frontend Setup
+1. **Navigate to frontend directory:**
+   ```bash
+   cd frontend
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   # or
+   pnpm install
+   ```
+
+3. **Run the development server:**
+   ```bash
+   npm run dev
+   # or
+   pnpm dev
+   ```
+
+4. **Access the app at:** `http://localhost:3000`
+
+### API Keys Setup
+- **OpenWeatherMap:** Sign up at openweathermap.org, get free API key
+- **AQICN:** Sign up at aqicn.org, get free token
+- **Razorpay:** Sign up for test account, get test API keys
+- **Supabase:** Create project, get URL and anon key from dashboard
+
+All keys are stored in `.env` and excluded from version control.
 
 ---
 
@@ -290,41 +357,39 @@ If all fraud checks pass, a UPI payout is initiated directly to the worker's reg
 
 ## 🗓️ Phased Development Plan
 
-### Phase 1 — Ideation & Foundation (Weeks 1–2) ✅ Current
+### Phase 1 — Ideation & Foundation (Weeks 1–2) ✅ Completed
 
 **Theme: Know Your Delivery Worker**
 
 **Goal:** Define the full product strategy, design the system architecture, and build the frontend skeleton.
 
-| Area                | Deliverable                                                                             |
-| ------------------- | --------------------------------------------------------------------------------------- |
-| Product             | Persona defined, 3 scenarios written, coverage scope locked                             |
-| Premium Model       | Weekly formula designed, coverage tiers set, example calculations validated             |
-| Parametric Triggers | 5 triggers defined with thresholds, data sources, and payout percentages                |
-| ML Plan             | Random Forest premium model architecture defined, Isolation Forest fraud plan outlined  |
-| Frontend            | HTML/CSS/JS prototype — onboarding, premium display, plan selection, dashboard skeleton |
-| Docs                | This README + GitHub repo set up                                                        |
-| Video               | 2-minute strategy and prototype walkthrough                                             |
+| Area                | Deliverable                                                                             | Status |
+| ------------------- | --------------------------------------------------------------------------------------- | ------ |
+| Product             | Persona defined, 3 scenarios written, coverage scope locked                             | ✅     |
+| Premium Model       | Weekly formula designed, coverage tiers set, example calculations validated             | ✅     |
+| Parametric Triggers | 5 triggers defined with thresholds, data sources, and payout percentages                | ✅     |
+| ML Plan             | Random Forest premium model architecture defined, Isolation Forest fraud plan outlined  | ✅     |
+| Frontend            | HTML/CSS/JS prototype — onboarding, premium display, plan selection, dashboard skeleton | ✅     |
+| Database Setup      | Supabase PostgreSQL configured, tables created, connection tested                       | ✅     |
+| API Integration     | OpenWeatherMap, AQICN, Razorpay test keys configured                                     | ✅     |
+| Docs                | This README + GitHub repo set up                                                        | ✅     |
+| Video               | 2-minute strategy and prototype walkthrough                                             | ⏳     |
 
----
-
-### Phase 2 — Automation & Protection (Weeks 3–4)
+### Phase 2 — Automation & Protection (Weeks 3–4) 🔄 In Progress
 
 **Theme: Protect Your Worker**
 
 **Goal:** Build the full backend, connect live trigger APIs, and deliver a working end-to-end claims flow.
 
-| Area     | Deliverable                                                                                  |
-| -------- | -------------------------------------------------------------------------------------------- |
-| Backend  | FastAPI app with routes for registration, policy creation, trigger polling, claim processing |
-| Database | Supabase PostgreSQL set up with workers, policies, claims, and disruption_log tables         |
-| Triggers | 3–5 automated parametric triggers live with OpenWeatherMap + AQICN real API data             |
-| ML       | Dynamic premium calculation using scikit-learn Random Forest trained on synthetic zone data  |
-| Claims   | Auto-trigger → fraud check → status update flow working end-to-end                           |
-| Frontend | Migrated to Next.js + Tailwind CSS PWA; all pages connected to backend APIs                  |
-| Video    | 2-minute working demo video                                                                  |
-
----
+| Area     | Deliverable                                                                                  | Status |
+| -------- | -------------------------------------------------------------------------------------------- | ------ |
+| Backend  | FastAPI app with routes for registration, policy creation, trigger polling, claim processing | 🔄     |
+| Database | Supabase PostgreSQL set up with workers, policies, claims, and disruption_events tables     | ✅     |
+| Triggers | 3–5 automated parametric triggers live with OpenWeatherMap + AQICN real API data             | 🔄     |
+| ML       | Dynamic premium calculation using scikit-learn Random Forest trained on synthetic zone data  | ⏳     |
+| Claims   | Auto-trigger → fraud check → status update flow working end-to-end                           | ⏳     |
+| Frontend | Migrated to Next.js + Tailwind CSS PWA; all pages connected to backend APIs                  | 🔄     |
+| Video    | 2-minute working demo video                                                                  | ⏳     |
 
 ### Phase 3 — Scale & Optimise (Weeks 5–6)
 
@@ -332,31 +397,86 @@ If all fraud checks pass, a UPI payout is initiated directly to the worker's reg
 
 **Goal:** Add advanced fraud detection, simulated payouts, intelligent dashboards, and prepare the final submission.
 
-| Area             | Deliverable                                                                               |
-| ---------------- | ----------------------------------------------------------------------------------------- |
-| Fraud Detection  | Isolation Forest trained on synthetic claims data; GPS + activity validation integrated   |
-| Payments         | Razorpay test mode integrated — simulated UPI payout demonstrated in demo                 |
-| Worker Dashboard | Active coverage status, weekly earnings protected, payout history                         |
-| Admin Dashboard  | Loss ratios, predictive analytics for next week's likely disruptions, fraud flag log      |
-| Final Demo       | 5-minute video showing simulated rainstorm → auto-claim → payout end-to-end               |
-| Pitch Deck       | PDF covering persona, AI architecture, fraud model, and weekly pricing business viability |
+| Area             | Deliverable                                                                               | Status |
+| ---------------- | ----------------------------------------------------------------------------------------- | ------ |
+| Fraud Detection  | Isolation Forest trained on synthetic claims data; GPS + activity validation integrated   | ⏳     |
+| Payments         | Razorpay test mode integrated — simulated UPI payout demonstrated in demo                 | ⏳     |
+| Worker Dashboard | Active coverage status, weekly earnings protected, payout history                         | ⏳     |
+| Admin Dashboard  | Loss ratios, predictive analytics for next week's likely disruptions, fraud flag log      | ⏳     |
+| Final Demo       | 5-minute video showing simulated rainstorm → auto-claim → payout end-to-end               | ⏳     |
+| Pitch Deck       | PDF covering persona, AI architecture, fraud model, and weekly pricing business viability | ⏳     |
 
 ---
 
 ## 📁 Repository Structure
 
-The repository is organized into two main folders. The `frontend/` folder contains the Next.js app with pages for onboarding, plan selection, and the worker dashboard. The `backend/` folder contains the FastAPI app with separate route files for worker registration, policy management, trigger monitoring, and claims processing. The ML models (premium scorer and fraud detector) live inside a dedicated `ml/` subfolder within the backend. A `.env.example` file documents all required API keys.
+```
+GuideWire/
+├── app/                          # FastAPI backend
+│   ├── __init__.py
+│   ├── db.py                     # SQLAlchemy models & database connection
+│   ├── main.py                   # FastAPI app entry point
+│   ├── schemas.py                # Pydantic schemas
+│   └── services/                 # Business logic modules
+│       ├── __init__.py
+│       ├── analytics.py
+│       ├── fraud.py
+│       ├── integrations.py
+│       ├── risk.py
+│       └── triggers.py
+├── frontend/                     # Next.js frontend
+│   ├── AGENTS.md
+│   ├── CLAUDE.md
+│   ├── eslint.config.mjs
+│   ├── jsconfig.json
+│   ├── next.config.mjs
+│   ├── package.json
+│   ├── pnpm-lock.yaml
+│   ├── pnpm-workspace.yaml
+│   ├── postcss.config.mjs
+│   ├── README.md
+│   ├── public/
+│   └── src/
+│       ├── app/
+│       │   ├── auth/
+│       │   │   └── page.js
+│       │   ├── dashboard/
+│       │   │   └── page.js
+│       │   ├── globals.css
+│       │   ├── layout.js
+│       │   ├── page.js
+│       │   └── plans/
+│       │       └── page.js
+│       ├── components/
+│       │   ├── DashboardClient.js
+│       │   ├── ProtectedDashboard.js
+│       │   └── SiteHeader.js
+│       └── lib/
+│           ├── api.js
+│           ├── auth.js
+├── .env                          # Environment variables (API keys, DB URL)
+├── .gitignore                    # Git ignore rules
+├── LICENSE
+├── Readme.md                     # This file
+├── requirements.txt              # Python dependencies
+├── schema.sql                    # Database schema
+└── test_db.py                    # Database connection test script
+```
+
+The repository is organized into two main folders. The `app/` folder contains the FastAPI backend with SQLAlchemy models and service modules. The `frontend/` folder contains the Next.js app with pages for onboarding, plan selection, and the worker dashboard. Database schema is in `schema.sql`, and environment configuration in `.env`.
 
 ---
 
 ## 🔑 APIs Used
 
-| API            | Purpose                                | Tier              |
-| -------------- | -------------------------------------- | ----------------- |
-| OpenWeatherMap | Rain (mm), temperature, weather alerts | Free              |
-| AQICN          | Real-time AQI by city                  | Free              |
-| Supabase       | Hosted PostgreSQL + Auth               | Free              |
-| Razorpay       | UPI payment simulation                 | Sandbox (Phase 3) |
+| API            | Purpose                                | Tier              | Status            |
+| -------------- | -------------------------------------- | ----------------- | ----------------- |
+| OpenWeatherMap | Rain (mm), temperature, weather alerts | Free              | ✅ Configured     |
+| AQICN          | Real-time AQI by city                  | Free              | ✅ Configured     |
+| Supabase       | Hosted PostgreSQL + Auth               | Free              | ✅ Connected      |
+| Razorpay       | UPI payment simulation                 | Sandbox (Phase 3) | ✅ Test keys added|
+
+All API keys are stored securely in `.env` and excluded from git commits.
 
 ---
 
