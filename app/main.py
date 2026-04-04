@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import random
 from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -19,22 +21,146 @@ from .schemas import (
 )
 from .services.analytics import build_metrics
 from .services.fraud import FraudEngine
-from .services.risk import RiskInput, calculate_risk
 from .services.triggers import DisruptionInput, evaluate_triggers
+from .services.ml_risk import risk_model
+from .services.premium_calculator import premium_calculator
 
 app = FastAPI(title="Gig Worker Parametric Insurance Platform")
 
 # Add CORS middleware to allow requests from frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific frontend domains
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Request/Response Models
+# ========== STARTUP EVENT ==========
+@app.on_event("startup")
+async def startup_event():
+    """Initialize ML model and start background trigger monitoring"""
+    print("=" * 50)
+    print("🚀 Starting GigShield AI Platform...")
+    print("=" * 50)
+    
+    # Load ML model
+    if not risk_model.load_model():
+        print("📊 No saved model found. Training new ML model...")
+        result = risk_model.train_on_synthetic_data()
+        print(f"✅ ML Model trained! Test accuracy: {result['test_score']:.2%}")
+    else:
+        print("✅ ML Model loaded from disk!")
+    
+    # Prevent duplicate background tasks on reload
+    if not hasattr(app.state, "monitor_started"):
+        app.state.monitor_started = True
+        asyncio.create_task(continuous_trigger_monitor())
+        print("✅ Background trigger monitoring started (every 30 minutes)")
+    else:
+        print("✅ Background monitor already running")
+    
+    print("=" * 50)
+    print("🎉 GigShield is ready!")
+    print("=" * 50)
+
+
+# ========== BACKGROUND TRIGGER MONITORING ==========
+async def continuous_trigger_monitor():
+    """Background task that checks triggers every 30 minutes with error handling"""
+    while True:
+        try:
+            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔍 Scanning for disruptions...")
+            
+            for worker_id, worker in WORKERS.items():
+                rainfall_mm = random.randint(0, 100)
+                aqi = random.randint(50, 400)
+                heat_index = random.randint(30, 48)
+                
+                # Check if policy is active
+                policy = next((p for p in POLICIES if p.worker_id == worker_id), None)
+                if not policy or not getattr(policy, 'active', True):
+                    continue
+                
+                disruption_input = DisruptionInput(
+                    disruption_type='environmental',
+                    severity=random.randint(2, 5),
+                    rainfall_mm=rainfall_mm,
+                    heat_index=heat_index,
+                    aqi=aqi,
+                    flood_alert=rainfall_mm > 70,
+                    curfew=False
+                )
+                
+                triggered, payout = evaluate_triggers(disruption_input, worker['avg_daily_income'])
+                
+                if triggered:
+                    print(f"⚠️ Trigger detected for {worker_id}")
+                    print(f"   📊 Conditions: Rain={rainfall_mm}mm, AQI={aqi}, Heat={heat_index}°C")
+                    print(f"   💰 Payout: ₹{payout}")
+                    await process_auto_claim(worker_id, payout)
+            
+            await asyncio.sleep(1800)  # 30 minutes
+            
+        except Exception as e:
+            print(f"❌ Error in background monitor: {e}")
+            await asyncio.sleep(60)
+
+
+# ========== COMPLETE CLAIM PIPELINE ==========
+async def process_auto_claim(worker_id: str, payout_amount: float):
+    """Complete claim pipeline: Trigger → Claim → Fraud → Payout"""
+    
+    worker = WORKERS.get(worker_id)
+    policy = next((p for p in POLICIES if p.worker_id == worker_id), None)
+    
+    if not worker or not policy:
+        print(f"⚠️ Cannot process claim: Worker or policy not found for {worker_id}")
+        return
+    
+    if not getattr(policy, 'active', True):
+        print(f"⚠️ Cannot process claim: Policy inactive for {worker_id}")
+        return
+    
+    claim = Claim(
+        claim_id=str(uuid4()),
+        worker_id=worker_id,
+        policy_id=policy.policy_id,
+        event_id=str(uuid4()),
+        claimed_income_loss=payout_amount,
+        approved_payout=payout_amount,
+        status=ClaimStatus.PENDING,
+        created_at=datetime.utcnow(),
+    )
+    
+    # Run fraud detection
+    fraud_result = fraud_engine.evaluate_claim(claim)
+    fraud_score = fraud_result.get('fraud_score', 0)
+    reasons = fraud_result.get('reasons', fraud_result.get('legacy_signals', []))
+    
+    print(f"🔍 Fraud analysis: score={fraud_score}/100")
+    if reasons:
+        for reason in reasons[:2]:
+            print(f"   📋 {reason}")
+    
+    # Apply fraud decision
+    if fraud_result.get('action') == 'REJECT' or fraud_score >= 70:
+        claim.status = ClaimStatus.REJECTED
+        claim.approved_payout = 0
+        print(f"🚫 Claim REJECTED - High fraud probability ({fraud_score}/100)")
+        CLAIMS.append(claim)
+        return
+    
+    claim.status = ClaimStatus.PAID
+    claim.approved_payout = payout_amount
+    CLAIMS.append(claim)
+    
+    print(f"💰 Payout: ₹{payout_amount}")
+    print(f"✅ Claim PAID - Fraud score: {fraud_score}/100")
+
+
+# ========== Request/Response Models ==========
 class OnboardWorkerRequest(BaseModel):
     worker_id: str
     name: str
@@ -49,6 +175,8 @@ class OnboardWorkerResponse(BaseModel):
     risk: RiskProfile
     policy: Policy
     message: str
+    ml_risk_score: Optional[float] = None
+    weekly_premium: Optional[float] = None
 
 
 class TriggerEventRequest(BaseModel):
@@ -59,11 +187,13 @@ class TriggerEventRequest(BaseModel):
 
 
 class TriggerEventResponse(BaseModel):
-    event: DisruptionEvent
+    event: Optional[DisruptionEvent] = None
     claim: Optional[Claim] = None
     fraud_signals: list = Field(default_factory=list)
+    fraud_score: int = 0
     message: str
     triggered: bool
+    payout_amount: float = 0
 
 
 class DashboardResponse(BaseModel):
@@ -74,6 +204,14 @@ class DashboardResponse(BaseModel):
     current_risk: Optional[RiskProfile] = None
     current_policy: Optional[Policy] = None
 
+
+class SimulateEventRequest(BaseModel):
+    worker_id: str
+    event_type: str = "rain"
+    severity: int = 4
+
+
+# ========== In-Memory Storage ==========
 WORKERS: Dict[str, dict] = {}
 RISKS: List[RiskProfile] = []
 POLICIES: List[Policy] = []
@@ -83,7 +221,26 @@ CLAIMS: List[Claim] = []
 fraud_engine = FraudEngine()
 
 
-# REST API Endpoints
+# ========== Helper to convert Policy to dict with all fields ==========
+def policy_to_dict(policy: Policy) -> dict:
+    """Convert Policy object to dict including all fields"""
+    result = {
+        "policy_id": policy.policy_id,
+        "worker_id": policy.worker_id,
+        "weekly_premium": policy.weekly_premium,
+        "coverage_per_week": policy.coverage_per_week,
+        "created_at": policy.created_at,
+    }
+    if hasattr(policy, 'risk_score') and policy.risk_score is not None:
+        result["risk_score"] = policy.risk_score
+    if hasattr(policy, 'risk_band') and policy.risk_band is not None:
+        result["risk_band"] = policy.risk_band
+    if hasattr(policy, 'active'):
+        result["active"] = policy.active
+    return result
+
+
+# ========== REST API Endpoints ==========
 
 @app.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard():
@@ -100,7 +257,7 @@ async def get_dashboard():
         current_policy = next((p for p in POLICIES if p.worker_id == last_id), None)
 
     return DashboardResponse(
-        policies=POLICIES,
+        policies=[policy_to_dict(p) for p in POLICIES],
         claims=CLAIMS[-10:],
         metrics=metrics,
         current_worker=current_worker,
@@ -111,7 +268,22 @@ async def get_dashboard():
 
 @app.post("/workers/onboard", response_model=OnboardWorkerResponse)
 async def onboard_worker(request: OnboardWorkerRequest):
-    """Onboard a new gig worker, calculate risk, and issue a policy."""
+    """Onboard a new gig worker, calculate risk using ML, and issue a policy."""
+    
+    worker_data_for_ml = {
+        'city': request.city,
+        'platform': request.platform,
+        'experience_days': 30,
+        'avg_daily_income': request.avg_daily_income,
+        'historical_claim_rate': 0.0,
+        'pincode': request.pincode,
+        'location_density': 0.7 if request.city.lower() in ['mumbai', 'delhi', 'bangalore'] else 0.4,
+        'platform_volatility': 0.3 if request.platform in ['Zomato', 'Swiggy'] else 0.5,
+    }
+    
+    ml_risk = risk_model.predict_risk(worker_data_for_ml)
+    premium_result = premium_calculator.calculate(worker_data_for_ml, ml_risk)
+    
     WORKERS[request.worker_id] = {
         "worker_id": request.worker_id,
         "name": request.name,
@@ -119,32 +291,32 @@ async def onboard_worker(request: OnboardWorkerRequest):
         "pincode": request.pincode,
         "platform": request.platform,
         "avg_daily_income": request.avg_daily_income,
+        "experience_days": 30,
+        "joined_at": datetime.utcnow().isoformat(),
     }
 
-    city_lower = request.city.lower()
-    external_frequency_index = (
-        0.7 if city_lower in {"mumbai", "delhi", "kolkata"} else 0.4
-    )
-    activity_index = 0.8
-
-    risk_input = RiskInput(
+    risk = RiskProfile(
+        worker_id=request.worker_id,
         city=request.city,
         pincode=request.pincode,
         avg_daily_income=request.avg_daily_income,
         platform=request.platform,
-        external_frequency_index=external_frequency_index,
-        activity_index=activity_index,
+        risk_score=ml_risk['risk_score'],
+        risk_band=ml_risk['risk_band'],
+        suggested_weekly_premium=premium_result['weekly_premium'],
+        external_frequency_index=0.7 if request.city.lower() in {"mumbai", "delhi", "kolkata"} else 0.4,
+        activity_index=0.8
     )
-
-    risk = calculate_risk(risk_input)
-    risk.worker_id = request.worker_id
     RISKS.append(risk)
 
     policy = Policy(
         policy_id=str(uuid4()),
         worker_id=request.worker_id,
-        weekly_premium=risk.suggested_weekly_premium,
-        coverage_per_week=round(request.avg_daily_income * 7 * 0.8, 2),
+        weekly_premium=premium_result['weekly_premium'],
+        coverage_per_week=premium_result['coverage_amount'],
+        risk_score=ml_risk['risk_score'],
+        risk_band=ml_risk['risk_band'],
+        active=True,
         created_at=datetime.utcnow(),
     )
     POLICIES.append(policy)
@@ -153,7 +325,9 @@ async def onboard_worker(request: OnboardWorkerRequest):
         worker=WORKERS[request.worker_id],
         risk=risk,
         policy=policy,
-        message=f"Onboarded {request.name} with risk band {risk.risk_band.upper()} and weekly premium ₹{risk.suggested_weekly_premium}",
+        message=f"✅ Onboarded {request.name} | Risk: {ml_risk['risk_band']} ({ml_risk['risk_score']:.0f}/100) | Premium: ₹{premium_result['weekly_premium']}/week",
+        ml_risk_score=ml_risk['risk_score'],
+        weekly_premium=premium_result['weekly_premium']
     )
 
 
@@ -162,7 +336,27 @@ async def trigger_event(request: TriggerEventRequest):
     """Trigger a disruption event and evaluate for claim payout."""
     worker = WORKERS.get(request.worker_id)
     if not worker:
-        raise ValueError(f"Unknown worker {request.worker_id}. Onboard first.")
+        return TriggerEventResponse(
+            event=None,
+            claim=None,
+            fraud_signals=[],
+            fraud_score=0,
+            message=f"❌ Unknown worker {request.worker_id}. Onboard first.",
+            triggered=False,
+            payout_amount=0
+        )
+    
+    policy = next((p for p in POLICIES if p.worker_id == request.worker_id), None)
+    if not policy or not getattr(policy, 'active', True):
+        return TriggerEventResponse(
+            event=None,
+            claim=None,
+            fraud_signals=[],
+            fraud_score=0,
+            message="⚠️ No active policy found for worker.",
+            triggered=False,
+            payout_amount=0
+        )
 
     event = DisruptionEvent(
         event_id=str(uuid4()),
@@ -176,58 +370,180 @@ async def trigger_event(request: TriggerEventRequest):
 
     avg_daily_income = worker["avg_daily_income"]
 
+    rainfall_mm = max(0, request.severity * 15.0 + random.randint(-10, 10))
+    aqi = max(50, 120 + request.severity * 40 + random.randint(-20, 20))
+    heat_index = 35 + request.severity * 2 + random.randint(-3, 3)
+
     disruption_input = DisruptionInput(
         disruption_type=request.disruption_type,
         severity=request.severity,
-        rainfall_mm=request.severity * 15.0,
-        heat_index=35 + request.severity * 2,
-        aqi=120 + request.severity * 40,
-        flood_alert=request.severity >= 4,
+        rainfall_mm=rainfall_mm,
+        heat_index=heat_index,
+        aqi=aqi,
+        flood_alert=request.severity >= 4 and rainfall_mm > 60,
         curfew=request.severity >= 4,
     )
 
     triggered, model_payout = evaluate_triggers(disruption_input, avg_daily_income)
 
-    message = "No payout triggered; event below threshold."
+    message = f"ℹ️ No payout triggered. Conditions: Rain={rainfall_mm:.0f}mm, AQI={aqi}, Heat={heat_index:.0f}°C"
     fraud_signals = []
+    fraud_score = 0
     claim = None
 
     if triggered:
-        policy = next((p for p in POLICIES if p.worker_id == request.worker_id), None)
-        if policy:
-            claim = Claim(
-                claim_id=str(uuid4()),
-                worker_id=request.worker_id,
-                policy_id=policy.policy_id,
-                event_id=event.event_id,
-                claimed_income_loss=model_payout,
-                approved_payout=model_payout,
-                status=ClaimStatus.APPROVED,
-                created_at=datetime.utcnow(),
-            )
-            fraud_signals = fraud_engine.evaluate_claim(claim)
-            if any(s.severity >= 4 for s in fraud_signals):
-                claim.status = ClaimStatus.REJECTED
-                claim.approved_payout = 0.0
-                message = "Claim flagged and rejected by fraud engine."
-            else:
-                message = f"Auto-claim approved for ₹{model_payout}. Payout initiated."
-
-            CLAIMS.append(claim)
+        claim = Claim(
+            claim_id=str(uuid4()),
+            worker_id=request.worker_id,
+            policy_id=policy.policy_id,
+            event_id=event.event_id,
+            claimed_income_loss=model_payout,
+            approved_payout=model_payout,
+            status=ClaimStatus.PENDING,
+            created_at=datetime.utcnow(),
+        )
+        
+        fraud_result = fraud_engine.evaluate_claim(claim)
+        fraud_signals = fraud_result.get('reasons', fraud_result.get('legacy_signals', []))
+        fraud_score = fraud_result.get('fraud_score', 0)
+        
+        print(f"🔍 Fraud analysis: score={fraud_score}/100")
+        
+        if fraud_result.get('action') == 'REJECT' or fraud_score >= 70:
+            claim.status = ClaimStatus.REJECTED
+            claim.approved_payout = 0.0
+            message = f"🚫 Claim REJECTED by AI Fraud Detection! Fraud score: {fraud_score}/100"
         else:
-            message = "No active policy for worker; cannot create claim."
+            claim.status = ClaimStatus.PAID
+            message = f"💰 Auto-claim APPROVED! ₹{model_payout} paid to UPI"
+
+        CLAIMS.append(claim)
+    
+    final_triggered = triggered and claim is not None and claim.status == ClaimStatus.PAID
 
     return TriggerEventResponse(
         event=event,
         claim=claim,
         fraud_signals=fraud_signals,
+        fraud_score=fraud_score,
         message=message,
-        triggered=triggered and claim is not None,
+        triggered=final_triggered,
+        payout_amount=model_payout if final_triggered else 0
     )
 
 
+# ========== DEMO CONTROL ==========
+@app.post("/api/simulate/rain")
+async def simulate_rain_event(request: SimulateEventRequest):
+    """Demo control - simulate rain without waiting for real weather"""
+    worker = WORKERS.get(request.worker_id)
+    if not worker:
+        return {"error": f"Worker {request.worker_id} not found"}
+    
+    policy = next((p for p in POLICIES if p.worker_id == request.worker_id), None)
+    if not policy or not getattr(policy, 'active', True):
+        return {"error": "No active policy found"}
+    
+    payout = 500 + (request.severity - 1) * 400
+    await process_auto_claim(request.worker_id, payout)
+    
+    return {
+        "payout": payout,
+        "fraud_score": 0,
+        "status": "PAID",
+        "message": f"💰 Simulated {request.event_type} event! ₹{payout} paid to worker"
+    }
+
+
+# ========== ANALYTICS ENDPOINTS ==========
 @app.get("/analytics/metrics", response_model=AnalyticsMetrics)
 async def get_analytics_metrics():
     """Get analytics metrics."""
     return build_metrics(RISKS, POLICIES, CLAIMS, EVENTS)
 
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "ml_model_loaded": risk_model.is_trained,
+        "total_workers": len(WORKERS),
+        "total_policies": len(POLICIES),
+        "total_claims": len(CLAIMS),
+        "background_monitoring": "active",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@app.get("/fraud/stats")
+async def fraud_statistics():
+    """Get fraud detection statistics"""
+    rejected_claims = [c for c in CLAIMS if c.status == ClaimStatus.REJECTED]
+    paid_claims = [c for c in CLAIMS if c.status == ClaimStatus.PAID]
+    
+    return {
+        "total_claims": len(CLAIMS),
+        "approved_claims": len(paid_claims),
+        "rejected_claims": len(rejected_claims),
+        "fraud_rate": len(rejected_claims) / len(CLAIMS) if CLAIMS else 0,
+        "total_payouts": sum(c.approved_payout for c in paid_claims),
+        "fraud_prevented": sum(c.claimed_income_loss for c in rejected_claims)
+    }
+
+
+@app.get("/policies")
+async def get_policies():
+    """Return all policies"""
+    return [policy_to_dict(p) for p in POLICIES]
+
+
+@app.get("/claims")
+async def get_claims():
+    """Return all claims"""
+    return [
+        {
+            "claim_id": c.claim_id,
+            "worker_id": c.worker_id,
+            "status": c.status.value,
+            "approved_payout": c.approved_payout
+        }
+        for c in CLAIMS
+    ]
+
+
+@app.get("/test/ml")
+async def test_ml_model():
+    """Test endpoint to verify ML model is working"""
+    if not risk_model.is_trained:
+        return {"status": "not_trained", "message": "ML model not trained yet"}
+    
+    test_workers = [
+        {'city': 'Mumbai', 'platform': 'Zomato', 'experience_days': 30, 'avg_daily_income': 500},
+        {'city': 'Delhi', 'platform': 'Swiggy', 'experience_days': 200, 'avg_daily_income': 700},
+        {'city': 'Bangalore', 'platform': 'Zepto', 'experience_days': 500, 'avg_daily_income': 400},
+    ]
+    
+    results = []
+    for worker in test_workers:
+        risk = risk_model.predict_risk(worker)
+        premium = premium_calculator.calculate(worker, risk)
+        results.append({
+            "worker": worker,
+            "risk_score": risk['risk_score'],
+            "risk_band": risk['risk_band'],
+            "weekly_premium": premium['weekly_premium']
+        })
+    
+    return {
+        "status": "ok",
+        "model_trained": True,
+        "test_results": results,
+        "feature_importance": risk_model.get_top_features(3)
+    }
+
+
+# ========== RUN SERVER ==========
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
