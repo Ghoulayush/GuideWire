@@ -1,30 +1,49 @@
-.env
+# Virtual environments
+.venv
+.venv-*
+venv/
+env/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-node_modules/
-.next/
-out/
-.nuxt/
-dist/
-build/
-.DS_Store
-Thumbs.db
-*.log
+
+# Environment variables
+.env
+.env.local
+
+# Node modules
+frontend/node_modules/
+frontend/.next/
+
+# IDE files
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
-.agents/
-skills-lock.json
-test_db.py
 
+# Model files
+models/*.pkl
+models/*.h5
 
+# Logs
+*.log
+npm-debug.log*__pycache__/
+*.pyc
+
+# Environment variables
+.env
+.env.local
+
+# Node modules
+frontend/node_modules/
+frontend/.next/
+
+# IDE files
+.vscode/
+.idea/
+
+# Model files (optional - can be generated)
+models/*.pkl
+models/*.h5
+
+# Logs
+*.log
+npm-debug.log*
+>>>>>>> feature/fraud-advanced

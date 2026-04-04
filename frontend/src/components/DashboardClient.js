@@ -34,6 +34,143 @@ function MetricCard({ title, value, help }) {
   );
 }
 
+// 🚀 NEW: Beautiful Fraud Alert Component
+function FraudAlert({ fraudResult, onClose }) {
+  if (!fraudResult) return null;
+  
+  const getScoreColor = (score) => {
+    if (score >= 70) return { bg: "#ffebee", border: "#d32f2f", text: "#b71c1c" };
+    if (score >= 40) return { bg: "#fff3e0", border: "#ed6c02", text: "#e65100" };
+    return { bg: "#e8f5e9", border: "#2e7d32", text: "#1b5e20" };
+  };
+  
+  const getActionIcon = (action) => {
+    if (action === "REJECT") return "🚫";
+    if (action === "REVIEW") return "⚠️";
+    return "✅";
+  };
+  
+  const getActionBadge = (action) => {
+    if (action === "REJECT") return "reject-badge";
+    if (action === "REVIEW") return "review-badge";
+    return "approve-badge";
+  };
+  
+  const colors = getScoreColor(fraudResult.fraud_score);
+  
+  return (
+    <div className="fraud-alert-container" style={{
+      background: colors.bg,
+      borderLeft: `4px solid ${colors.border}`,
+      borderRadius: "16px",
+      padding: "1.25rem",
+      marginTop: "1.25rem",
+      position: "relative",
+      animation: "slideIn 0.3s ease-out"
+    }}>
+      <button
+        onClick={onClose}
+        style={{
+          position: "absolute",
+          top: "12px",
+          right: "12px",
+          background: "transparent",
+          border: "none",
+          fontSize: "1.2rem",
+          cursor: "pointer",
+          color: "#666",
+          padding: "4px 8px",
+          borderRadius: "8px"
+        }}
+        onMouseEnter={(e) => e.target.style.background = "#eee"}
+        onMouseLeave={(e) => e.target.style.background = "transparent"}
+      >
+        ✕
+      </button>
+      
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "12px" }}>
+        <span style={{ fontSize: "2rem" }}>{getActionIcon(fraudResult.action)}</span>
+        <h4 style={{ margin: 0, fontSize: "1.1rem", color: colors.text }}>
+          AI Fraud Detection Result
+        </h4>
+        <span className={`fraud-badge ${getActionBadge(fraudResult.action)}`}>
+          {fraudResult.action}
+        </span>
+      </div>
+      
+      <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", marginBottom: "12px" }}>
+        <div>
+          <span style={{ fontSize: "0.75rem", color: "#666", textTransform: "uppercase" }}>Fraud Score</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "1.8rem", fontWeight: "bold", color: colors.text }}>
+              {fraudResult.fraud_score}
+            </span>
+            <span style={{ fontSize: "0.9rem", color: "#666" }}>/ 100</span>
+            <div className="score-bar" style={{ width: "100px", height: "6px", background: "#e0e0e0", borderRadius: "3px", overflow: "hidden" }}>
+              <div style={{ width: `${fraudResult.fraud_score}%`, height: "100%", background: colors.border, borderRadius: "3px" }}></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <span style={{ fontSize: "0.75rem", color: "#666", textTransform: "uppercase" }}>Confidence</span>
+          <div style={{ fontSize: "1.3rem", fontWeight: "600", color: "#2e7d32" }}>
+            {fraudResult.confidence || 85}%
+          </div>
+        </div>
+      </div>
+      
+      <div style={{ marginBottom: "12px" }}>
+        <span style={{ fontSize: "0.75rem", color: "#666", textTransform: "uppercase" }}>Decision Reason</span>
+        <p style={{ margin: "4px 0 0 0", fontSize: "0.9rem", color: "#333", background: "rgba(255,255,255,0.7)", padding: "8px 12px", borderRadius: "10px" }}>
+          {fraudResult.final_decision || fraudResult.reasons?.join(", ") || "No fraud detected"}
+        </p>
+      </div>
+      
+      {fraudResult.detector_results && fraudResult.detector_results.length > 0 && (
+        <details style={{ marginTop: "8px" }}>
+          <summary style={{ cursor: "pointer", fontSize: "0.8rem", color: "#666", padding: "4px 0" }}>
+            🔍 View detailed detector breakdown ({fraudResult.detector_results.length} layers)
+          </summary>
+          <div style={{ marginTop: "8px", fontSize: "0.8rem" }}>
+            {fraudResult.detector_results.map((d, i) => (
+              <div key={i} style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "6px 0",
+                borderBottom: "1px solid rgba(0,0,0,0.05)"
+              }}>
+                <span style={{ fontWeight: "500" }}>{d.detector_name}:</span>
+                <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                  <span style={{ color: d.fraud_score >= 70 ? "#d32f2f" : d.fraud_score >= 40 ? "#ed6c02" : "#2e7d32" }}>
+                    score: {d.fraud_score}
+                  </span>
+                  <span className={`mini-badge ${d.action?.toLowerCase()}`}>
+                    {d.action}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      
+      <style jsx>{`
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 export default function DashboardClient({ storyHtml }) {
   const [dashboard, setDashboard] = useState(null);
   const [workerForm, setWorkerForm] = useState(defaultWorker);
@@ -42,6 +179,7 @@ export default function DashboardClient({ storyHtml }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [fraudResult, setFraudResult] = useState(null);
 
   const metrics = dashboard?.metrics;
   const recentClaims = dashboard?.claims || [];
@@ -119,6 +257,7 @@ export default function DashboardClient({ storyHtml }) {
     setBusy("event");
     setError("");
     setNotice("");
+    setFraudResult(null);
 
     try {
       const payload = {
@@ -128,6 +267,12 @@ export default function DashboardClient({ storyHtml }) {
 
       const result = await triggerEvent(payload);
       setNotice(result.message);
+      
+      // 🚀 NEW: Capture fraud detection result
+      if (result.fraud_data) {
+        setFraudResult(result.fraud_data);
+      }
+      
       await refreshDashboard();
     } catch (err) {
       setError(err.message || "Event trigger failed");
@@ -303,6 +448,9 @@ export default function DashboardClient({ storyHtml }) {
         {notice && <p className="notice">{notice}</p>}
         {error && <p className="error">{error}</p>}
       </section>
+
+      {/* 🚀 NEW: Fraud Alert Display */}
+      <FraudAlert fraudResult={fraudResult} onClose={() => setFraudResult(null)} />
 
       <section className="tables-grid">
         <article className="table-card">
