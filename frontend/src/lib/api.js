@@ -12,18 +12,12 @@ export async function getDashboard() {
     }
     const metrics = await metricsResponse.json();
     
-    // Fetch policies (try multiple possible endpoints)
+    // Fetch policies
     let policies = [];
     try {
       const policiesRes = await fetch(`${API_BASE_URL}/policies`);
       if (policiesRes.ok) {
         policies = await policiesRes.json();
-      } else {
-        // Try alternative endpoint
-        const altPoliciesRes = await fetch(`${API_BASE_URL}/api/policies`);
-        if (altPoliciesRes.ok) {
-          policies = await altPoliciesRes.json();
-        }
       }
     } catch (e) {
       console.warn("Could not fetch policies:", e);
@@ -35,12 +29,6 @@ export async function getDashboard() {
       const claimsRes = await fetch(`${API_BASE_URL}/claims`);
       if (claimsRes.ok) {
         claims = await claimsRes.json();
-      } else {
-        // Try alternative endpoint
-        const altClaimsRes = await fetch(`${API_BASE_URL}/api/claims`);
-        if (altClaimsRes.ok) {
-          claims = await altClaimsRes.json();
-        }
       }
     } catch (e) {
       console.warn("Could not fetch claims:", e);
@@ -57,146 +45,82 @@ export async function getDashboard() {
  * Onboard a new worker and create policy
  */
 export async function onboardWorker(payload) {
-  const formData = new URLSearchParams();
-  Object.entries(payload).forEach(([key, value]) => {
-    formData.append(key, value);
-  });
-  
-  const response = await fetch(`${API_BASE_URL}/onboard`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: formData,
-  });
-  
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Onboarding failed");
+  try {
+    const response = await fetch(`${API_BASE_URL}/workers/onboard`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Onboarding failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Return in format expected by DashboardClient
+    return {
+      message: data.message,
+      risk_score: data.ml_risk_score,
+      risk_band: data.risk?.risk_band,
+      weekly_premium: data.weekly_premium
+    };
+  } catch (error) {
+    console.error("Onboarding error:", error);
+    throw error;
   }
-  
-  const html = await response.text();
-  
-  // Parse message from HTML response
-  let message = "Worker onboarded successfully";
-  const messageMatch = html.match(/<p class="notice">(.*?)<\/p>/s);
-  if (messageMatch) {
-    message = messageMatch[1].replace(/<[^>]*>/g, '').trim();
-  }
-  
-  // Parse risk score and premium if available
-  let riskScore = null;
-  let premium = null;
-  let riskBand = null;
-  
-  const riskMatch = html.match(/Risk: (\w+)\s*\((\d+)\/100\)/i);
-  if (riskMatch) {
-    riskBand = riskMatch[1];
-    riskScore = parseInt(riskMatch[2]);
-  }
-  
-  const premiumMatch = html.match(/Premium: ₹(\d+)\/week/i);
-  if (premiumMatch) {
-    premium = parseInt(premiumMatch[1]);
-  }
-  
-  return { 
-    message, 
-    risk_score: riskScore,
-    risk_band: riskBand,
-    weekly_premium: premium
-  };
 }
 
 /**
  * Trigger a disruption event and process claim with fraud detection
  */
 export async function triggerEvent(payload) {
-  const formData = new URLSearchParams();
-  Object.entries(payload).forEach(([key, value]) => {
-    formData.append(key, value);
-  });
-  
-  const response = await fetch(`${API_BASE_URL}/trigger`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: formData,
-  });
-  
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Event trigger failed");
-  }
-  
-  const html = await response.text();
-  
-  // Parse message from HTML response
-  let message = "Claim processed";
-  const messageMatch = html.match(/<p class="notice">(.*?)<\/p>/s);
-  if (messageMatch) {
-    message = messageMatch[1].replace(/<[^>]*>/g, '').trim();
-  }
-  
-  // Parse error if any
-  let error = null;
-  const errorMatch = html.match(/<p class="error">(.*?)<\/p>/s);
-  if (errorMatch) {
-    error = errorMatch[1].replace(/<[^>]*>/g, '').trim();
-  }
-  
-  // 🚀 PARSE FRAUD DETECTION DATA from HTML response
-  let fraudData = null;
-  
-  // Method 1: Look for data-fraud attribute
-  const dataFraudMatch = html.match(/data-fraud='([^']+)'/);
-  if (dataFraudMatch) {
-    try {
-      fraudData = JSON.parse(dataFraudMatch[1]);
-    } catch (e) {
-      console.warn("Failed to parse data-fraud attribute:", e);
+  try {
+    const response = await fetch(`${API_BASE_URL}/events/trigger`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Event trigger failed: ${response.status}`);
     }
-  }
-  
-  // Method 2: Look for fraud result div with class
-  if (!fraudData) {
-    const fraudDivMatch = html.match(/<div class="fraud-result"[^>]*>([\s\S]*?)<\/div>/i);
-    if (fraudDivMatch) {
-      const fraudHtml = fraudDivMatch[1];
-      
-      // Extract fraud score
-      const scoreMatch = fraudHtml.match(/fraud-score["']?\s*:\s*(\d+)/i);
-      const actionMatch = fraudHtml.match(/action["']?\s*:\s*['"](\w+)['"]/i);
-      const reasonMatch = fraudHtml.match(/reason["']?\s*:\s*['"]([^'"]+)['"]/i);
-      
-      if (scoreMatch || actionMatch) {
-        fraudData = {
-          fraud_score: scoreMatch ? parseInt(scoreMatch[1]) : 0,
-          action: actionMatch ? actionMatch[1] : "APPROVE",
-          reason: reasonMatch ? reasonMatch[1] : "No fraud detected",
-          detector_results: []
-        };
-      }
+    
+    const data = await response.json();
+    
+    // Determine action based on fraud score
+    let action = "APPROVE";
+    if (data.fraud_score >= 70) {
+      action = "REJECT";
+    } else if (data.fraud_score >= 40) {
+      action = "REVIEW";
     }
-  }
-  
-  // Method 3: Look for fraud score in the message
-  if (!fraudData && message.includes("Fraud")) {
-    const scoreMatch = message.match(/score[:\s]*(\d+)/i);
-    fraudData = {
-      fraud_score: scoreMatch ? parseInt(scoreMatch[1]) : 50,
-      action: message.includes("REJECT") ? "REJECT" : (message.includes("REVIEW") ? "REVIEW" : "APPROVE"),
-      reason: message,
-      detector_results: []
+    
+    return {
+      message: data.message,
+      fraud_data: {
+        fraud_score: data.fraud_score,
+        action: action,
+        reasons: data.fraud_signals || [],
+        final_decision: data.message,
+        detector_results: []
+      },
+      has_error: false
+    };
+  } catch (error) {
+    console.error("Trigger event error:", error);
+    return {
+      message: error.message,
+      fraud_data: null,
+      has_error: true
     };
   }
-  
-  return {
-    message: error || message,
-    fraud_data: fraudData,
-    has_error: !!error
-  };
 }
 
 /**
@@ -271,6 +195,34 @@ export async function testMLModel() {
   } catch (error) {
     console.error("ML test error:", error);
     return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * Simulate rain event (demo control)
+ */
+export async function simulateRainEvent(workerId, severity = 4) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/simulate/rain`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        worker_id: workerId,
+        event_type: "rain",
+        severity: severity
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Simulation failed: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error("Simulation error:", error);
+    return { error: error.message };
   }
 }
 

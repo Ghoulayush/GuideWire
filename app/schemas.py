@@ -24,9 +24,15 @@ class OnboardRequest(BaseModel):
 
 class RiskProfile(BaseModel):
     worker_id: str
+    city: Optional[str] = None
+    pincode: Optional[str] = None
+    avg_daily_income: Optional[float] = None
+    platform: Optional[str] = None
     risk_score: float
     risk_band: str
     suggested_weekly_premium: float
+    external_frequency_index: Optional[float] = None
+    activity_index: Optional[float] = None
 
 
 class Policy(BaseModel):
@@ -34,6 +40,9 @@ class Policy(BaseModel):
     worker_id: str
     weekly_premium: float
     coverage_per_week: float
+    risk_score: Optional[float] = None
+    risk_band: Optional[str] = None
+    active: Optional[bool] = True
     created_at: datetime
 
 
@@ -56,6 +65,7 @@ class ClaimStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    PAID = "paid"
 
 
 class Claim(BaseModel):
