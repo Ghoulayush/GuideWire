@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const fallbackLocation = {
-  latitude: 12.9716,
-  longitude: 77.5946,
+  latitude: 22.5937,
+  longitude: 78.9629,
   accuracy: null,
-  source: "manual",
+  source: "pending",
 };
 
 function toNumber(value, fallback) {
@@ -14,13 +14,43 @@ function toNumber(value, fallback) {
   return Number.isFinite(next) ? next : fallback;
 }
 
+function describeError(error) {
+  if (error?.code === 1) {
+    return {
+      state: "denied",
+      message:
+        "Location permission denied. Enable browser location permission, or set the pin manually.",
+    };
+  }
+  if (error?.code === 2) {
+    return {
+      state: "unavailable",
+      message:
+        "Location unavailable. Check GPS/network and retry, or place the pin manually.",
+    };
+  }
+  if (error?.code === 3) {
+    return {
+      state: "timeout",
+      message:
+        "Location request timed out. Retrying with a faster low-accuracy lookup...",
+    };
+  }
+  return {
+    state: "unavailable",
+    message: "Could not detect location. Place the pin manually to continue.",
+  };
+}
+
 export default function IssueLocationPicker({ value, onChange }) {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const markerRef = useRef(null);
   const locationRef = useRef(fallbackLocation);
-  const [mapError, setMapError] = useState("");
-  const [locationInfo, setLocationInfo] = useState("");
+  const [statusText, setStatusText] = useState(
+    "Tip: use Detect My Location, then drag pin for precise correction.",
+  );
+  const [detectState, setDetectState] = useState("idle");
   const [detecting, setDetecting] = useState(false);
 
   const location = useMemo(
@@ -72,7 +102,7 @@ export default function IssueLocationPicker({ value, onChange }) {
 
         const map = L.map(mapContainerRef.current).setView(
           [initial.latitude, initial.longitude],
-          14,
+          5,
         );
 
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -92,6 +122,8 @@ export default function IssueLocationPicker({ value, onChange }) {
             source: "drag",
             accuracy: null,
           });
+          setDetectState("manual");
+          setStatusText("Pin moved manually. Location is ready for submission.");
         });
 
         map.on("click", (event) => {
@@ -103,6 +135,8 @@ export default function IssueLocationPicker({ value, onChange }) {
             source: "map_click",
             accuracy: null,
           });
+          setDetectState("manual");
+          setStatusText("Location updated from map click.");
         });
 
         if (canceled) {
@@ -113,7 +147,8 @@ export default function IssueLocationPicker({ value, onChange }) {
         mapRef.current = map;
         markerRef.current = marker;
       } catch (error) {
-        setMapError(error?.message || "Could not load map");
+        setDetectState("error");
+        setStatusText(error?.message || "Could not load map");
       }
     }
 
@@ -139,54 +174,83 @@ export default function IssueLocationPicker({ value, onChange }) {
   }, [location.latitude, location.longitude]);
 
   const detectLocation = useCallback(() => {
-    setMapError("");
-    setLocationInfo("");
-
-    if (typeof window === "undefined" || !navigator.geolocation) {
-      setMapError("Geolocation is not available in this browser.");
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setDetectState("insecure");
+      setStatusText(
+        "Location requires HTTPS (or localhost). Open this app from a secure URL.",
+      );
       return;
     }
 
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setDetectState("unsupported");
+      setStatusText("Geolocation is not available in this browser.");
+      return;
+    }
+
+    setDetectState("detecting");
+    setStatusText("Detecting your location...");
     setDetecting(true);
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const next = {
-          latitude: Number(pos.coords.latitude.toFixed(6)),
-          longitude: Number(pos.coords.longitude.toFixed(6)),
-          accuracy: Number(pos.coords.accuracy.toFixed(2)),
-          source: "gps",
-        };
+    const requestPosition = (options) =>
+      new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      });
 
-        const marker = markerRef.current;
-        const map = mapRef.current;
-        if (marker && map) {
-          marker.setLatLng([next.latitude, next.longitude]);
-          map.setView([next.latitude, next.longitude], 16);
+    const setDetected = (pos, source) => {
+      const next = {
+        latitude: Number(pos.coords.latitude.toFixed(6)),
+        longitude: Number(pos.coords.longitude.toFixed(6)),
+        accuracy: Number(pos.coords.accuracy.toFixed(2)),
+        source,
+      };
+
+      const marker = markerRef.current;
+      const map = mapRef.current;
+      if (marker && map) {
+        marker.setLatLng([next.latitude, next.longitude]);
+        map.setView([next.latitude, next.longitude], 16);
+      }
+
+      updateLocation(next);
+      setDetectState("success");
+      setStatusText(
+        `Detected: ${next.latitude}, ${next.longitude} (accuracy ${next.accuracy}m). You can still drag pin to fine-tune.`,
+      );
+      setDetecting(false);
+    };
+
+    requestPosition({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 })
+      .then((pos) => setDetected(pos, "gps"))
+      .catch((error) => {
+        const first = describeError(error);
+        setDetectState(first.state);
+        setStatusText(first.message);
+
+        if (error?.code !== 2 && error?.code !== 3) {
+          setDetecting(false);
+          return;
         }
 
-        updateLocation(next);
-        setLocationInfo(
-          `Location captured (${next.latitude}, ${next.longitude})${next.accuracy ? ` with ${next.accuracy}m accuracy` : ""}.`,
-        );
-        setDetecting(false);
-      },
-      (error) => {
-        if (error?.code === 1) {
-          setMapError("Location permission denied. Please allow it and retry.");
-        } else if (error?.code === 2) {
-          setMapError("Location unavailable. Try moving to an open area and retry.");
-        } else if (error?.code === 3) {
-          setMapError("Location request timed out. Please retry.");
-        } else {
-          setMapError(
-            "Could not detect location. Allow location permission or set pin manually.",
-          );
-        }
-        setDetecting(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
-    );
+        requestPosition({
+          enableHighAccuracy: false,
+          timeout: 8000,
+          maximumAge: 120000,
+        })
+          .then((pos) => setDetected(pos, "gps_fallback"))
+          .catch((retryError) => {
+            const retry = describeError(retryError);
+            setDetectState(retry.state);
+            if (retryError?.code === 3) {
+              setStatusText(
+                "Location still timed out. Please place the pin manually.",
+              );
+            } else {
+              setStatusText(retry.message);
+            }
+            setDetecting(false);
+          });
+      });
   }, [updateLocation]);
 
   useEffect(() => {
@@ -206,11 +270,22 @@ export default function IssueLocationPicker({ value, onChange }) {
           name: "geolocation",
         });
         if (!active) return;
+
         if (permission.state === "granted") {
+          setStatusText("Location permission granted. Auto-detecting...");
           detectLocation();
+        } else if (permission.state === "denied") {
+          setDetectState("denied");
+          setStatusText(
+            "Location permission is blocked in browser settings. Use manual pin placement or enable permission and retry.",
+          );
+        } else {
+          setStatusText(
+            "Allow location access for auto-detect, or place your pin manually.",
+          );
         }
       } catch {
-        // Ignore unsupported permissions API and rely on manual detect.
+        setStatusText("Use Detect My Location, or place your pin manually.");
       }
     }
 
@@ -226,7 +301,11 @@ export default function IssueLocationPicker({ value, onChange }) {
       <div className="location-picker-header">
         <p className="metric-title">Issue Location</p>
         <button type="button" onClick={detectLocation} disabled={detecting}>
-          {detecting ? "Detecting..." : "Detect My Location"}
+          {detecting
+            ? "Detecting..."
+            : detectState === "success"
+              ? "Detect Again"
+              : "Detect My Location"}
         </button>
       </div>
 
@@ -247,6 +326,7 @@ export default function IssueLocationPicker({ value, onChange }) {
               updateLocation({
                 latitude: toNumber(event.target.value, location.latitude),
                 source: "manual",
+                accuracy: null,
               })
             }
           />
@@ -261,6 +341,7 @@ export default function IssueLocationPicker({ value, onChange }) {
               updateLocation({
                 longitude: toNumber(event.target.value, location.longitude),
                 source: "manual",
+                accuracy: null,
               })
             }
           />
@@ -272,9 +353,19 @@ export default function IssueLocationPicker({ value, onChange }) {
         {location.accuracy ? ` | Accuracy: ${location.accuracy}m` : ""}
       </p>
 
-      {locationInfo && <p className="notice">{locationInfo}</p>}
-
-      {mapError && <p className="error">{mapError}</p>}
+      {statusText && (
+        <p
+          className={
+            detectState === "success"
+              ? "notice"
+              : detectState === "idle" || detectState === "detecting"
+                ? "location-helper"
+                : "error"
+          }
+        >
+          {statusText}
+        </p>
+      )}
     </div>
   );
 }
