@@ -7,6 +7,8 @@ import {
   onboardWorker,
   triggerEvent,
 } from "@/lib/api";
+import { getCurrentUser, saveDeliveryIssue } from "@/lib/supabase";
+import IssueLocationPicker from "@/components/IssueLocationPicker";
 
 const defaultWorker = {
   worker_id: "worker-ravi-001",
@@ -22,6 +24,13 @@ const defaultEvent = {
   disruption_type: "environmental",
   severity: "4",
   description: "Heavy rainfall blocked deliveries for 6 hours",
+};
+
+const defaultIssueLocation = {
+  latitude: 12.9716,
+  longitude: 77.5946,
+  source: "manual",
+  accuracy: null,
 };
 
 function MetricCard({ title, value, help }) {
@@ -180,6 +189,7 @@ export default function DashboardClient({ storyHtml }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [fraudResult, setFraudResult] = useState(null);
+  const [issueLocation, setIssueLocation] = useState(defaultIssueLocation);
 
   const metrics = dashboard?.metrics;
   const recentClaims = dashboard?.claims || [];
@@ -263,9 +273,25 @@ export default function DashboardClient({ storyHtml }) {
       const payload = {
         ...eventForm,
         severity: Number(eventForm.severity),
+        issue_location: issueLocation,
       };
 
       const result = await triggerEvent(payload);
+
+      const currentUser = await getCurrentUser();
+      await saveDeliveryIssue({
+        ...payload,
+        user_id: currentUser?.id,
+        reporter_email: currentUser?.email,
+        backend_message: result.message,
+        triggered: !result.has_error,
+        payout_amount: result.fraud_data?.action === "REJECT" ? 0 : undefined,
+        latitude: issueLocation.latitude,
+        longitude: issueLocation.longitude,
+        location_source: issueLocation.source,
+        location_accuracy: issueLocation.accuracy,
+      });
+
       setNotice(result.message);
       
       // 🚀 NEW: Capture fraud detection result
@@ -432,6 +458,12 @@ export default function DashboardClient({ storyHtml }) {
               required
             />
           </label>
+
+          <IssueLocationPicker
+            value={issueLocation}
+            onChange={setIssueLocation}
+          />
+
           <button type="submit" disabled={busy === "event"}>
             {busy === "event" ? "Submitting..." : "Evaluate Trigger + Claim"}
           </button>

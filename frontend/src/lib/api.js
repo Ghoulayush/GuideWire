@@ -1,4 +1,5 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "";
 
 /**
  * Fetch dashboard metrics and data
@@ -199,6 +200,90 @@ export async function testMLModel() {
 }
 
 /**
+ * Create Razorpay order for selected subscription plan
+ */
+export async function createSubscriptionOrder(payload) {
+  const response = await fetch(`${API_BASE_URL}/payments/razorpay/order`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Could not create subscription order");
+  }
+  return data;
+}
+
+/**
+ * Verify Razorpay payment signature from backend
+ */
+export async function verifySubscriptionPayment(payload) {
+  const response = await fetch(`${API_BASE_URL}/payments/razorpay/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Payment verification failed");
+  }
+  return data;
+}
+
+/**
+ * Fetch subscription status for a customer email
+ */
+export async function getSubscriptionStatus(email) {
+  const response = await fetch(
+    `${API_BASE_URL}/payments/subscriptions/${encodeURIComponent(email)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Status fetch failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function getAllWorkers() {
+  const response = await fetch(`${API_BASE_URL}/workers`);
+  if (!response.ok) {
+    throw new Error(`Workers fetch failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function getAllSubscriptions(filterStatus = "") {
+  const query = filterStatus
+    ? `?status=${encodeURIComponent(filterStatus)}`
+    : "";
+  const response = await fetch(`${API_BASE_URL}/payments/subscriptions${query}`);
+  if (!response.ok) {
+    throw new Error(`Subscriptions fetch failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function loadRazorpayScript() {
+  if (typeof window === "undefined") return false;
+  if (window.Razorpay) return true;
+
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
+/**
  * Simulate rain event (demo control)
  */
 export async function simulateRainEvent(workerId, severity = 4) {
@@ -227,3 +312,4 @@ export async function simulateRainEvent(workerId, severity = 4) {
 }
 
 export { API_BASE_URL };
+export { RAZORPAY_KEY_ID };

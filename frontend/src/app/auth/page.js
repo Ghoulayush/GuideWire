@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { setStoredUser } from "@/lib/auth";
+import {
+  getCurrentUser,
+  saveUserProfile,
+  signInWithEmail,
+  signUpWithEmail,
+} from "@/lib/supabase";
 
 const initialState = {
   name: "",
@@ -12,25 +17,60 @@ const initialState = {
 export default function AuthPage() {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState(initialState);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   function onChange(event) {
     const { name, value } = event.target;
     setForm((previous) => ({ ...previous, [name]: value }));
   }
 
-  function onSubmit(event) {
+  async function onSubmit(event) {
     event.preventDefault();
+    setBusy(true);
+    setError("");
+    setNotice("");
 
     const displayName =
       mode === "signup" ? form.name.trim() : form.email.split("@")[0];
 
-    setStoredUser({
-      name: displayName || "Gig Worker",
-      email: form.email.trim(),
-      mode,
-    });
+    try {
+      const email = form.email.trim();
+      const password = form.password;
 
-    window.location.href = "/dashboard";
+      const authResult =
+        mode === "signup"
+          ? await signUpWithEmail(email, password, displayName || "Gig Worker")
+          : await signInWithEmail(email, password);
+
+      if (!authResult.ok) {
+        throw new Error(authResult.reason || "Authentication failed");
+      }
+
+      const user = authResult.data?.user || authResult.data?.session?.user;
+      const currentUser = user || (await getCurrentUser());
+
+      if (!currentUser) {
+        setNotice(
+          "Account created. If email confirmation is enabled, verify email before login.",
+        );
+        return;
+      }
+
+      await saveUserProfile({
+        id: currentUser.id,
+        email: currentUser.email,
+        name: currentUser.user_metadata?.name || displayName || "Gig Worker",
+        mode,
+      });
+
+      window.location.href = "/home";
+    } catch (err) {
+      setError(err.message || "Authentication failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -97,8 +137,14 @@ export default function AuthPage() {
             />
           </label>
           <button type="submit">
-            {mode === "login" ? "Login to Dashboard" : "Create Account"}
+            {busy
+              ? "Please wait..."
+              : mode === "login"
+                ? "Login to Dashboard"
+                : "Create Account"}
           </button>
+          {error && <p className="error">{error}</p>}
+          {notice && <p className="notice">{notice}</p>}
         </form>
       </section>
     </main>
