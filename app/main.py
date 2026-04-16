@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hmac
 import hashlib
+import json
 import os
 import random
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import requests
@@ -93,7 +95,9 @@ async def startup_event():
         else:
             print("✅ Background monitor already running")
     else:
-        print("ℹ️ Background trigger monitoring disabled (AUTO_TRIGGER_MONITORING=false)")
+        print(
+            "ℹ️ Background trigger monitoring disabled (AUTO_TRIGGER_MONITORING=false)"
+        )
 
     print("=" * 50)
     print("🎉 GigShield is ready!")
@@ -369,10 +373,49 @@ def list_claims() -> List[Claim]:
     return CLAIMS
 
 
+def list_claims_for_worker(worker_id: str) -> List[Claim]:
+    if USE_DB_PERSISTENCE:
+        return store.list_claims_for_worker(worker_id)
+    return [c for c in CLAIMS if c.worker_id == worker_id]
+
+
 def list_events() -> List[DisruptionEvent]:
     if USE_DB_PERSISTENCE:
         return store.list_events()
     return EVENTS
+
+
+def list_policies_for_worker(worker_id: str) -> List[Policy]:
+    if USE_DB_PERSISTENCE:
+        return store.list_policies_for_worker(worker_id)
+    return [p for p in POLICIES if p.worker_id == worker_id]
+
+
+def get_worker_id_for_user(user_id: str) -> Optional[str]:
+    if USE_DB_PERSISTENCE:
+        return store.get_worker_id_for_user(user_id)
+    return None
+
+
+def extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+
+    token = authorization[len("Bearer ") :].strip()
+    if not token:
+        return None
+
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return None
+        payload_b64 = parts[1]
+        padding = "=" * (-len(payload_b64) % 4)
+        payload_json = base64.urlsafe_b64decode(payload_b64 + padding).decode("utf-8")
+        payload = json.loads(payload_json)
+        return payload.get("sub")
+    except Exception:
+        return None
 
 
 def list_risks() -> List[RiskProfile]:
@@ -715,6 +758,50 @@ async def get_claims():
         }
         for c in claims
     ]
+
+
+@app.get("/claims/me")
+async def get_my_claims(authorization: Optional[str] = Header(default=None)):
+    """Return claims only for the authenticated user's linked worker."""
+    user_id = extract_user_id_from_token(authorization)
+    if not user_id:
+        return {"error": "Missing or invalid Authorization bearer token", "items": []}
+
+    worker_id = get_worker_id_for_user(user_id)
+    if not worker_id:
+        return {"error": "No worker linked to this user", "items": []}
+
+    claims = list_claims_for_worker(worker_id)
+    return {
+        "worker_id": worker_id,
+        "items": [
+            {
+                "claim_id": c.claim_id,
+                "worker_id": c.worker_id,
+                "status": c.status.value,
+                "approved_payout": c.approved_payout,
+            }
+            for c in claims
+        ],
+    }
+
+
+@app.get("/policies/me")
+async def get_my_policies(authorization: Optional[str] = Header(default=None)):
+    """Return policies only for the authenticated user's linked worker."""
+    user_id = extract_user_id_from_token(authorization)
+    if not user_id:
+        return {"error": "Missing or invalid Authorization bearer token", "items": []}
+
+    worker_id = get_worker_id_for_user(user_id)
+    if not worker_id:
+        return {"error": "No worker linked to this user", "items": []}
+
+    policies = list_policies_for_worker(worker_id)
+    return {
+        "worker_id": worker_id,
+        "items": [policy_to_dict(p) for p in policies],
+    }
 
 
 @app.get("/test/ml")

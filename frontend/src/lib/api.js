@@ -1,6 +1,11 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "";
 
+function authHeaders(token) {
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
 /**
  * Fetch dashboard metrics and data
  */
@@ -258,6 +263,22 @@ export async function getAllWorkers() {
   return await response.json();
 }
 
+export async function getAllPolicies() {
+  const response = await fetch(`${API_BASE_URL}/policies`);
+  if (!response.ok) {
+    throw new Error(`Policies fetch failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function getAllClaims() {
+  const response = await fetch(`${API_BASE_URL}/claims`);
+  if (!response.ok) {
+    throw new Error(`Claims fetch failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
 export async function getAllSubscriptions(filterStatus = "") {
   const query = filterStatus
     ? `?status=${encodeURIComponent(filterStatus)}`
@@ -265,6 +286,30 @@ export async function getAllSubscriptions(filterStatus = "") {
   const response = await fetch(`${API_BASE_URL}/payments/subscriptions${query}`);
   if (!response.ok) {
     throw new Error(`Subscriptions fetch failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function getMyClaims(token) {
+  const response = await fetch(`${API_BASE_URL}/claims/me`, {
+    headers: {
+      ...authHeaders(token),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`My claims fetch failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function getMyPolicies(token) {
+  const response = await fetch(`${API_BASE_URL}/policies/me`, {
+    headers: {
+      ...authHeaders(token),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`My policies fetch failed: ${response.status}`);
   }
   return await response.json();
 }

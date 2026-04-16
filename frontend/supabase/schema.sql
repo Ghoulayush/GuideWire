@@ -2,6 +2,7 @@ create table if not exists public.user_profiles (
   id bigint generated always as identity primary key,
   user_id uuid unique,
   email text unique not null,
+  worker_id text unique,
   name text,
   auth_mode text,
   updated_at timestamptz default now()
@@ -30,6 +31,7 @@ alter table public.delivery_issues add column if not exists longitude double pre
 alter table public.delivery_issues add column if not exists location_source text;
 alter table public.delivery_issues add column if not exists location_accuracy double precision;
 alter table public.user_profiles add column if not exists user_id uuid unique;
+alter table public.user_profiles add column if not exists worker_id text unique;
 alter table public.delivery_issues add column if not exists user_id uuid;
 
 alter table public.user_profiles

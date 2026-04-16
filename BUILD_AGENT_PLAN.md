@@ -1,131 +1,164 @@
-Goal
-Stabilize deployed production stack (Vercel frontend + Render backend + Supabase DB), remove UX bugs, and confirm end-to-end reliability before new feature expansion.
-## Deployment Context (Current)
-- Frontend: deployed on Vercel
-- Backend: deployed on Render
-- DB target: Supabase Postgres via `DATABASE_URL` (backend)
-- Auth: Supabase session-based (frontend)
-- Payments: Razorpay test mode integration present
+## Goal
+
+Build a production-ready admin dashboard, move global policy/claim visibility to admin, restrict worker claim visibility to only their own claims, and improve frontend visual quality.
+
+## Current Reality (Do Not Assume)
+
+- Admin page exists but currently focuses on workers/subscriptions.
+- Worker dashboard currently shows latest policies + recent claims (global data).
+- Backend `/claims` and `/policies` are global endpoints.
+- Auth is Supabase session on frontend; backend claim access is not yet user-scoped.
+- App is already deployed (Vercel + Render + Supabase), so every change must be deployment-safe.
+
 ## Non-Negotiable Execution Rules
+
 1. Work on exactly ONE task at a time.
-2. Do not start next task until user explicitly replies: `NEXT`.
+2. Do not start next task until user replies: `NEXT`.
 3. After each task, stop and report:
-   - changed files
+   - files changed
    - what works now
-   - verification run + result
-   - required inputs/secrets for next task
+   - verification result
+   - required input/secrets for next task
 4. If blocked, ask only minimum required question(s), then wait.
-5. Keep responses short (max 10 bullets).
-6. Prefer fixing production-impact issues first; defer new features until stability checks pass.
+5. No parallel implementation across tasks.
+
 ## Task Order (Sequential Only)
-- T1: Deployed environment smoke audit
-- T2: UI spacing and collision fixes
-- T3: Remove duplicate post-login navbar
-- T4: Dynamic navbar by auth + active subscription state
-- T5: Razorpay production-path debugging (test mode)
-- T6: Map location detection reliability improvements
-- T7: Next.js workspace/lockfile warning fix
-- T8: Backend persistence verification on Supabase
-- T9: Test suite alignment and CI sanity
-- T10: Final go/no-go checklist for production hardening
-## Task Specs
-### T1 — Deployed environment smoke audit
-**Deliverable**
-- Verify frontend->backend connectivity in deployed URLs.
-- Verify `/health` reports expected mode and service readiness.
-**Acceptance**
-- Frontend can hit deployed backend API.
-- Core routes respond without CORS/network errors.
-**Stop and wait for `NEXT`.**
+
+- T1: Define ownership model for worker claims
+- T2: Add backend user-scoped claims/policies endpoints
+- T3: Expand admin dashboard to host latest policies + recent claims
+- T4: Remove latest policies/recent claims from worker dashboard
+- T5: Restrict worker dashboard claims to own records only
+- T6: Frontend visual enhancement pass
+- T7: QA + regression checks
+- T8: Deploy + post-deploy validation checklist
+
 ---
-### T2 — UI spacing and collision fixes
+
+### T1 — Ownership model for worker claims
+
 **Deliverable**
-- Fix button/text/card spacing collisions in deployed UI (desktop + mobile).
-**Acceptance**
-- No visible overlap/collision across auth, home, dashboard, subscription, admin.
-**Stop and wait for `NEXT`.**
+
+- Finalize how an authenticated user maps to worker records.
+- Default implementation: map `auth user -> worker_id` via `user_profiles.worker_id` (or a dedicated mapping table if needed).
+  **Acceptance**
+- Each authenticated user resolves to exactly one worker context for claims visibility.
+- Admin can still view cross-worker/global claims.
+  **Stop and wait for `NEXT`.**
+
 ---
-### T3 — Remove duplicate post-login navbar
+
+### T2 — Backend user-scoped endpoints
+
 **Deliverable**
-- Keep only one navigation system after login.
-- Remove secondary tab strip above dashboard boxes.
-**Acceptance**
-- Logged-in views show only intended top navbar.
-**Stop and wait for `NEXT`.**
+
+- Add user-scoped endpoints (example):
+  - `GET /claims/me`
+  - `GET /policies/me` (optional but recommended)
+- Keep admin/global endpoints:
+  - `GET /claims`
+  - `GET /policies`
+- Enforce filtering server-side (not only frontend filtering).
+  **Acceptance**
+- Worker API returns only claims linked to that user’s worker_id.
+- Global endpoints remain available for admin workflows.
+  **Stop and wait for `NEXT`.**
+
 ---
-### T4 — Dynamic navbar by auth + active plan state
+
+### T3 — Admin dashboard data expansion
+
 **Deliverable**
-- Logged-out: `About`, `Plans`, `Login`
-- Logged-in, no active plan: `Home`, `Dashboard`, `Plans`
-- Logged-in, active plan: `Home`, `Dashboard`, `Simulation` (hide `Plans`)
-**Acceptance**
-- `About` hidden after login.
-- Nav switches correctly when subscription status changes.
-**Stop and wait for `NEXT`.**
+
+- Move “Latest Policies” and “Recent Claims” tables to admin interface.
+- Add sorting, recency limits, and optional filters (status/worker/plan).
+  **Acceptance**
+- Admin page becomes the source of truth for cross-user policy/claim monitoring.
+- Admin can view latest policies and recent claims in one place.
+  **Stop and wait for `NEXT`.**
+
 ---
-### T5 — Razorpay debugging (test mode)
+
+### T4 — Remove global policy/claim tables from worker dashboard
+
 **Deliverable**
-- Validate full flow on deployed stack:
-  - create order
-  - checkout popup
-  - verify signature
-  - subscription status update
-- Ensure no accidental mock fallback when keys exist.
-**Acceptance**
-- Successful test payment marks subscription `ACTIVE`.
-- Errors are user-readable and traceable in logs.
-**Needs**
-- Render env: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
-- Vercel env: `NEXT_PUBLIC_RAZORPAY_KEY_ID`
-**Stop and wait for `NEXT`.**
+
+- Remove global “Latest Policies” + global “Recent Claims” UI blocks from worker dashboard.
+- Keep worker-safe metrics and submission actions.
+  **Acceptance**
+- Worker UI no longer exposes global policy/claim lists.
+  **Stop and wait for `NEXT`.**
+
 ---
-### T6 — Map geolocation reliability
+
+### T5 — Worker-specific claims visibility
+
 **Deliverable**
-- Improve detect-location flow with clearer success/failure UX.
-- Keep manual correction path (pin drag/click + lat/lng edit).
-**Acceptance**
-- Detect button gives accurate status message.
-- User can correct location before submit every time.
-**Stop and wait for `NEXT`.**
+
+- Add worker-facing “My Recent Claims” section powered by `/claims/me`.
+- Ensure no other users’ claims can appear.
+  **Acceptance**
+- Worker sees only own recent claims.
+- Cross-user claim leakage is not possible via UI or endpoint response.
+  **Stop and wait for `NEXT`.**
+
 ---
-### T7 — Next.js warning fix
+
+### T6 — Frontend beautification pass
+
 **Deliverable**
-- Resolve workspace root/lockfile warning via repo-consistent config strategy.
-**Acceptance**
-- Build/deploy logs no longer show root/lockfile inference warning.
-**Stop and wait for `NEXT`.**
+
+- Improve visual quality with intentional design updates:
+  - stronger layout hierarchy
+  - cleaner spacing and card rhythm
+  - consistent typography scale
+  - polished table styling and badges
+  - responsive improvements for mobile
+- Preserve existing brand direction; avoid random redesign drift.
+  **Acceptance**
+- Admin and worker dashboards look cleaner, more premium, and easier to scan.
+- No usability regressions on desktop/mobile.
+  **Stop and wait for `NEXT`.**
+
 ---
-### T8 — Backend persistence verification on Supabase
+
+### T7 — QA + regression checks
+
 **Deliverable**
-- Confirm backend writes to Supabase Postgres tables and survives backend restart.
-- Verify workers/policies/claims/subscriptions persist.
-**Acceptance**
-- Data remains after Render restart.
-- `/health` reports database mode.
-- Supabase table rows match API operations.
-**Stop and wait for `NEXT`.**
+
+- Run and report:
+  - frontend lint + build
+  - focused backend tests
+  - manual role-based checks (worker vs admin data access)
+- Validate claim visibility boundaries.
+  **Acceptance**
+- All required checks pass.
+- Role-based access behavior validated with clear evidence.
+  **Stop and wait for `NEXT`.**
+
 ---
-### T9 — Test suite alignment and CI sanity
+
+### T8 — Deploy + post-deploy validation
+
 **Deliverable**
-- Reconcile known failing/stale tests with current API surface.
-- Ensure focused tests pass and document expected skips/failures.
-**Acceptance**
-- Core backend/frontend checks pass.
-- Any intentionally failing legacy tests are documented with reason.
-**Stop and wait for `NEXT`.**
----
-### T10 — Final production hardening checkpoint
-**Deliverable**
-- Provide go/no-go report with risks and remaining blockers.
-- List minimal must-fix items before scaling or app conversion.
-**Acceptance**
-- Clear production readiness decision with evidence.
-**Stop after completion.**
+
+- Deploy frontend and backend updates.
+- Validate on production URLs:
+  - admin sees global latest policies/claims
+  - worker sees only own claims
+  - no broken routes/UI
+  - metrics and forms still work
+    **Acceptance**
+- Production behavior matches requirements.
+- No data exposure bugs.
+  **Stop after completion.**
+
 ## Required Response Format After Each Task
-1) Status: DONE / BLOCKED
-2) Files changed
-3) What is working now
-4) Verification run + result
-5) Inputs needed for next task
-6) Risks/notes (short)
-7) `Reply NEXT to continue`
+
+1. Status: DONE / BLOCKED
+2. Files changed
+3. What is working now
+4. Verification run + result
+5. Inputs needed for next task
+6. Risks/notes (short)
+7. `Reply NEXT to continue`

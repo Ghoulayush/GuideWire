@@ -104,8 +104,62 @@ export async function saveUserProfile(user) {
   const payload = {
     user_id: user.id,
     email: user.email,
+    worker_id: user.worker_id || null,
     name: user.name || "Gig Worker",
     auth_mode: user.mode || "login",
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from("user_profiles")
+    .upsert(payload, { onConflict: "user_id" });
+
+  if (error) {
+    return { ok: false, skipped: false, reason: error.message };
+  }
+
+  return { ok: true };
+}
+
+export async function getCurrentUserWorkerId() {
+  if (!isSupabaseConfigured || !supabase) {
+    return null;
+  }
+
+  const user = await getCurrentUser();
+  if (!user?.id) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .select("worker_id")
+    .eq("user_id", user.id)
+    .single();
+
+  if (error) {
+    return null;
+  }
+
+  return data?.worker_id || null;
+}
+
+export async function setCurrentUserWorkerId(workerId) {
+  if (!isSupabaseConfigured || !supabase) {
+    return notConfiguredResult();
+  }
+
+  const user = await getCurrentUser();
+  if (!user?.id || !user?.email) {
+    return { ok: false, skipped: false, reason: "no_authenticated_user" };
+  }
+
+  const payload = {
+    user_id: user.id,
+    email: user.email,
+    worker_id: workerId,
+    name: user.user_metadata?.name || "Gig Worker",
+    auth_mode: "login",
     updated_at: new Date().toISOString(),
   };
 

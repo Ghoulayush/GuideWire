@@ -115,5 +115,14 @@ class SubscriptionRecord(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class UserProfileRecord(Base):
+    __tablename__ = "user_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(Text, unique=True, index=True, nullable=False)
+    worker_id: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)

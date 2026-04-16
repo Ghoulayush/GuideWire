@@ -4,11 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ProtectedAdminRoute from "@/components/ProtectedAdminRoute";
 import { getAdminSession, logoutAdmin } from "@/lib/admin";
-import { getAllSubscriptions, getAllWorkers } from "@/lib/api";
+import {
+  getAllClaims,
+  getAllPolicies,
+  getAllSubscriptions,
+  getAllWorkers,
+} from "@/lib/api";
 
 export default function AdminPage() {
   const router = useRouter();
   const [workers, setWorkers] = useState([]);
+  const [policies, setPolicies] = useState([]);
+  const [claims, setClaims] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
@@ -20,12 +27,16 @@ export default function AdminPage() {
     setError("");
     setLoading(true);
     try {
-      const [workersData, subsData] = await Promise.all([
+      const [workersData, subsData, policiesData, claimsData] = await Promise.all([
         getAllWorkers(),
         getAllSubscriptions(filterStatus),
+        getAllPolicies(),
+        getAllClaims(),
       ]);
       setWorkers(Array.isArray(workersData) ? workersData : []);
       setSubscriptions(Array.isArray(subsData.items) ? subsData.items : []);
+      setPolicies(Array.isArray(policiesData) ? policiesData : []);
+      setClaims(Array.isArray(claimsData) ? claimsData : []);
     } catch (err) {
       setError(err.message || "Could not load admin data");
     } finally {
@@ -85,6 +96,14 @@ export default function AdminPage() {
                 <p className="metric-value">{subscriptions.length}</p>
               </article>
               <article className="metric-card">
+                <p className="metric-title">Policies</p>
+                <p className="metric-value">{policies.length}</p>
+              </article>
+              <article className="metric-card">
+                <p className="metric-title">Claims</p>
+                <p className="metric-value">{claims.length}</p>
+              </article>
+              <article className="metric-card">
                 <p className="metric-title">Active Subscriptions</p>
                 <p className="metric-value">
                   {subscriptions.filter((item) => item.status === "ACTIVE").length}
@@ -104,6 +123,88 @@ export default function AdminPage() {
             </section>
 
             <section className="tables-grid">
+              <article className="table-card">
+                <h3>Latest Policies</h3>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Worker</th>
+                        <th>Premium</th>
+                        <th>Coverage</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {policies
+                        .slice(-10)
+                        .reverse()
+                        .map((policy) => (
+                          <tr key={policy.policy_id}>
+                            <td>{policy.worker_id}</td>
+                            <td>Rs. {policy.weekly_premium}</td>
+                            <td>Rs. {policy.coverage_per_week}</td>
+                            <td>
+                              <span
+                                className={
+                                  policy.active
+                                    ? "status-pill status-success"
+                                    : "status-pill status-muted"
+                                }
+                              >
+                                {policy.active ? "active" : "inactive"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      {!policies.length && (
+                        <tr>
+                          <td colSpan={4}>No policies available</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article className="table-card">
+                <h3>Recent Claims</h3>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Worker</th>
+                        <th>Status</th>
+                        <th>Payout</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {claims
+                        .slice(-12)
+                        .reverse()
+                        .map((claim) => (
+                          <tr key={claim.claim_id}>
+                            <td>{claim.worker_id}</td>
+                            <td>
+                              <span
+                                className={`status-pill status-${String(claim.status || "").toLowerCase()}`}
+                              >
+                                {claim.status}
+                              </span>
+                            </td>
+                            <td>Rs. {claim.approved_payout}</td>
+                          </tr>
+                        ))}
+                      {!claims.length && (
+                        <tr>
+                          <td colSpan={3}>No claims available</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+
               <article className="table-card">
                 <h3>Workers</h3>
                 <div className="table-wrap">
@@ -152,7 +253,13 @@ export default function AdminPage() {
                         <tr key={sub.id}>
                           <td>{sub.customer_email}</td>
                           <td>{sub.plan_id}</td>
-                          <td>{sub.status}</td>
+                          <td>
+                            <span
+                              className={`status-pill status-${String(sub.status || "").toLowerCase()}`}
+                            >
+                              {sub.status}
+                            </span>
+                          </td>
                           <td>{sub.mode}</td>
                         </tr>
                       ))}

@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getDashboard, onboardWorker, triggerEvent } from "@/lib/api";
-import { getCurrentUser, saveDeliveryIssue } from "@/lib/supabase";
+import { getDashboard, getMyClaims, onboardWorker, triggerEvent } from "@/lib/api";
+import {
+  getCurrentSession,
+  getCurrentUser,
+  getCurrentUserWorkerId,
+  saveDeliveryIssue,
+  setCurrentUserWorkerId,
+} from "@/lib/supabase";
 import IssueLocationPicker from "@/components/IssueLocationPicker";
 
 const defaultWorker = {
@@ -293,10 +299,10 @@ export default function DashboardClient({ storyHtml }) {
   const [notice, setNotice] = useState("");
   const [fraudResult, setFraudResult] = useState(null);
   const [issueLocation, setIssueLocation] = useState(defaultIssueLocation);
+  const [workerLinkStatus, setWorkerLinkStatus] = useState("");
+  const [myClaims, setMyClaims] = useState([]);
 
   const metrics = dashboard?.metrics;
-  const recentClaims = dashboard?.claims || [];
-  const policies = dashboard?.policies || [];
 
   const disruptionSummary = useMemo(() => {
     const list = metrics?.disruption_counts || [];
@@ -315,10 +321,27 @@ export default function DashboardClient({ storyHtml }) {
     setDashboard(data);
   }
 
+  async function refreshMyClaims() {
+    const session = await getCurrentSession();
+    const token = session?.access_token;
+    if (!token) {
+      setMyClaims([]);
+      return;
+    }
+
+    const response = await getMyClaims(token);
+    if (response?.error) {
+      setMyClaims([]);
+      return;
+    }
+
+    setMyClaims(Array.isArray(response?.items) ? response.items : []);
+  }
+
   useEffect(() => {
     async function load() {
       try {
-        await refreshDashboard();
+        await Promise.all([refreshDashboard(), refreshMyClaims()]);
       } catch (err) {
         setError(err.message || "Could not fetch dashboard data");
       } finally {
@@ -352,18 +375,34 @@ export default function DashboardClient({ storyHtml }) {
       };
 
       const result = await onboardWorker(payload);
+      const linkResult = await setCurrentUserWorkerId(payload.worker_id);
+      if (linkResult?.ok) {
+        setWorkerLinkStatus(`Linked your account to worker ${payload.worker_id}`);
+      }
       setNotice(result.message);
       setEventForm((current) => ({
         ...current,
         worker_id: workerForm.worker_id,
       }));
       await refreshDashboard();
+      await refreshMyClaims();
     } catch (err) {
       setError(err.message || "Worker onboarding failed");
     } finally {
       setBusy("");
     }
   }
+
+  useEffect(() => {
+    async function loadWorkerLinkStatus() {
+      const workerId = await getCurrentUserWorkerId();
+      if (workerId) {
+        setWorkerLinkStatus(`Your account is linked to worker ${workerId}`);
+      }
+    }
+
+    loadWorkerLinkStatus();
+  }, []);
 
   async function submitEvent(event) {
     event.preventDefault();
@@ -403,6 +442,7 @@ export default function DashboardClient({ storyHtml }) {
       }
 
       await refreshDashboard();
+      await refreshMyClaims();
     } catch (err) {
       setError(err.message || "Event trigger failed");
     } finally {
@@ -574,6 +614,7 @@ export default function DashboardClient({ storyHtml }) {
           </p>
         )}
         {notice && <p className="notice">{notice}</p>}
+        {workerLinkStatus && <p className="notice">{workerLinkStatus}</p>}
         {error && <p className="error">{error}</p>}
       </section>
 
@@ -585,62 +626,36 @@ export default function DashboardClient({ storyHtml }) {
 
       <section className="tables-grid">
         <article className="table-card">
-          <h3>Latest Policies</h3>
+          <h3>My Recent Claims</h3>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Worker</th>
-                  <th>Premium</th>
-                  <th>Coverage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {policies
-                  .slice(-5)
-                  .reverse()
-                  .map((item) => (
-                    <tr key={item.policy_id}>
-                      <td>{item.worker_id}</td>
-                      <td>₹{item.weekly_premium}</td>
-                      <td>₹{item.coverage_per_week}</td>
-                    </tr>
-                  ))}
-                {!policies.length && (
-                  <tr>
-                    <td colSpan={3}>No policies yet</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article className="table-card">
-          <h3>Recent Claims</h3>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Worker</th>
+                  <th>Claim ID</th>
                   <th>Status</th>
                   <th>Payout</th>
                 </tr>
               </thead>
               <tbody>
-                {recentClaims
+                {myClaims
                   .slice(-8)
                   .reverse()
                   .map((item) => (
                     <tr key={item.claim_id}>
-                      <td>{item.worker_id}</td>
-                      <td className="cap">{item.status}</td>
+                      <td>{item.claim_id}</td>
+                      <td>
+                        <span
+                          className={`status-pill status-${String(item.status || "").toLowerCase()}`}
+                        >
+                          {item.status}
+                        </span>
+                      </td>
                       <td>₹{item.approved_payout}</td>
                     </tr>
                   ))}
-                {!recentClaims.length && (
+                {!myClaims.length && (
                   <tr>
-                    <td colSpan={3}>No claims yet</td>
+                    <td colSpan={3}>No claims found for your account yet</td>
                   </tr>
                 )}
               </tbody>
@@ -648,6 +663,7 @@ export default function DashboardClient({ storyHtml }) {
           </div>
         </article>
       </section>
+
     </main>
   );
 }

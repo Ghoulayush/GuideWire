@@ -12,6 +12,7 @@ from ..db import (
     RiskProfileRecord,
     SessionLocal,
     SubscriptionRecord,
+    UserProfileRecord,
     WorkerRecord,
 )
 from ..schemas import (
@@ -276,6 +277,61 @@ class Store:
                 )
                 for r in rows
             ]
+
+    def list_claims_for_worker(self, worker_id: str) -> List[Claim]:
+        with SessionLocal() as db:
+            rows = (
+                db.query(ClaimRecord)
+                .filter(ClaimRecord.worker_id == worker_id)
+                .order_by(ClaimRecord.created_at)
+                .all()
+            )
+            return [
+                Claim(
+                    claim_id=r.claim_id,
+                    worker_id=r.worker_id,
+                    policy_id=r.policy_id,
+                    event_id=r.event_id,
+                    claimed_income_loss=r.claimed_income_loss,
+                    approved_payout=r.approved_payout,
+                    status=ClaimStatus(r.status),
+                    created_at=r.created_at,
+                )
+                for r in rows
+            ]
+
+    def list_policies_for_worker(self, worker_id: str) -> List[Policy]:
+        with SessionLocal() as db:
+            rows = (
+                db.query(PolicyRecord)
+                .filter(PolicyRecord.worker_id == worker_id)
+                .order_by(PolicyRecord.created_at)
+                .all()
+            )
+            return [
+                Policy(
+                    policy_id=r.policy_id,
+                    worker_id=r.worker_id,
+                    weekly_premium=r.weekly_premium,
+                    coverage_per_week=r.coverage_per_week,
+                    risk_score=r.risk_score,
+                    risk_band=r.risk_band,
+                    active=r.active,
+                    created_at=r.created_at,
+                )
+                for r in rows
+            ]
+
+    def get_worker_id_for_user(self, user_id: str) -> Optional[str]:
+        with SessionLocal() as db:
+            row = (
+                db.query(UserProfileRecord)
+                .filter(UserProfileRecord.user_id == user_id)
+                .first()
+            )
+            if not row:
+                return None
+            return row.worker_id
 
     def add_subscription(self, item: Dict[str, Any]) -> Dict[str, Any]:
         with SessionLocal() as db:
