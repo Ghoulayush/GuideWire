@@ -40,6 +40,13 @@ USE_DB_PERSISTENCE = os.getenv("USE_DB_PERSISTENCE", "true").lower() in {
     "yes",
 }
 
+# Auto-claim monitoring is opt-in to avoid generating claims without user actions.
+AUTO_TRIGGER_MONITORING = os.getenv("AUTO_TRIGGER_MONITORING", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
 if USE_DB_PERSISTENCE:
     init_db()
 
@@ -77,13 +84,16 @@ async def startup_event():
     else:
         print("✅ ML Model loaded from disk!")
 
-    # Prevent duplicate background tasks on reload
-    if not hasattr(app.state, "monitor_started"):
-        app.state.monitor_started = True
-        asyncio.create_task(continuous_trigger_monitor())
-        print("✅ Background trigger monitoring started (every 30 minutes)")
+    if AUTO_TRIGGER_MONITORING:
+        # Prevent duplicate background tasks on reload
+        if not hasattr(app.state, "monitor_started"):
+            app.state.monitor_started = True
+            asyncio.create_task(continuous_trigger_monitor())
+            print("✅ Background trigger monitoring started (every 30 minutes)")
+        else:
+            print("✅ Background monitor already running")
     else:
-        print("✅ Background monitor already running")
+        print("ℹ️ Background trigger monitoring disabled (AUTO_TRIGGER_MONITORING=false)")
 
     print("=" * 50)
     print("🎉 GigShield is ready!")

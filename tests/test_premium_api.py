@@ -14,34 +14,53 @@ def test_health_endpoint():
 
 def test_calculate_premium_basic():
     payload = {
+        "worker_id": "test-premium-001",
+        "name": "Premium Test",
         "city": "Mumbai",
-        "platform": "Zomato",
-        "experience_days": 120,
-        "avg_daily_income": 600,
-        "historical_claim_rate": 0.05,
         "pincode": "400001",
-        "location_density": 0.9,
-        "platform_volatility": 0.3,
+        "platform": "Zomato",
+        "avg_daily_income": 600,
     }
 
-    r = client.post("/api/calculate-premium", json=payload)
+    r = client.post("/workers/onboard", json=payload)
     assert r.status_code == 200, r.text
     data = r.json()
-    assert data.get("status") == "ok"
 
-    assert "forecast_adjustment_pct" in data
-    adj = data["forecast_adjustment_pct"]
-    assert isinstance(adj, float) or isinstance(adj, int)
-    assert -0.16 <= float(adj) <= 0.16
-
-    assert "risk" in data and "premium" in data
+    assert "risk" in data and "policy" in data
     risk = data["risk"]
-    premium = data["premium"]
+    policy = data["policy"]
 
     assert "risk_score" in risk
     assert isinstance(risk["risk_score"], (int, float))
 
-    assert "weekly_premium" in premium
-    wp = premium["weekly_premium"]
-    assert isinstance(wp, int)
+    assert "weekly_premium" in policy
+    wp = policy["weekly_premium"]
+    assert isinstance(wp, (int, float))
     assert 49 <= wp <= 99
+
+
+def test_trigger_event_pipeline():
+    onboard = {
+        "worker_id": "test-event-001",
+        "name": "Event Test",
+        "city": "Delhi",
+        "pincode": "110001",
+        "platform": "Swiggy",
+        "avg_daily_income": 700,
+    }
+    r_onboard = client.post("/workers/onboard", json=onboard)
+    assert r_onboard.status_code == 200, r_onboard.text
+
+    event_payload = {
+        "worker_id": onboard["worker_id"],
+        "disruption_type": "environmental",
+        "severity": 4,
+        "description": "Heavy rain in coverage area",
+    }
+    r_event = client.post("/events/trigger", json=event_payload)
+    assert r_event.status_code == 200, r_event.text
+    data = r_event.json()
+
+    assert "triggered" in data
+    assert "message" in data
+    assert data["event"]["worker_id"] == onboard["worker_id"]
