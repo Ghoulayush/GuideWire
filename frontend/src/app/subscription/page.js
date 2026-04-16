@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import UserTabs from "@/components/UserTabs";
 import {
   createSubscriptionOrder,
   getSubscriptionStatus,
@@ -154,7 +153,6 @@ export default function SubscriptionPage() {
   return (
     <ProtectedRoute>
       <main className="home-shell">
-        <UserTabs />
         <section className="home-hero">
           <p className="kicker">Subscription</p>
           <h1>Manage plan and billing</h1>

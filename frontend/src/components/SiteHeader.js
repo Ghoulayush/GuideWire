@@ -7,27 +7,32 @@ import {
   onAuthStateChange,
   signOutUser,
 } from "@/lib/supabase";
-
-const navItems = [
-  { href: "/", label: "About" },
-  { href: "/home", label: "Home" },
-  { href: "/plans", label: "Plans" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/admin/login", label: "Admin" },
-];
+import { getSubscriptionStatus } from "@/lib/api";
 
 export default function SiteHeader() {
+  const [user, setUser] = useState(null);
   const [name, setName] = useState("");
+  const [hasActivePlan, setHasActivePlan] = useState(false);
 
-  function applyUser(session) {
-    const user = session?.user;
-    if (!user) {
+  async function applyUser(session) {
+    const nextUser = session?.user;
+    setUser(nextUser || null);
+
+    if (!nextUser) {
       setName("");
+      setHasActivePlan(false);
       return;
     }
 
-    const display = user.user_metadata?.name || user.email || "";
+    const display = nextUser.user_metadata?.name || nextUser.email || "";
     setName(display);
+
+    try {
+      const status = await getSubscriptionStatus(nextUser.email || "");
+      setHasActivePlan(status?.latest_status === "ACTIVE");
+    } catch {
+      setHasActivePlan(false);
+    }
   }
 
   useEffect(() => {
@@ -36,14 +41,14 @@ export default function SiteHeader() {
     async function bootstrap() {
       const session = await getCurrentSession();
       if (!mounted) return;
-      applyUser(session);
+      await applyUser(session);
     }
 
     bootstrap();
 
-    const { data } = onAuthStateChange((_event, session) => {
+    const { data } = onAuthStateChange(async (_event, session) => {
       if (!mounted) return;
-      applyUser(session);
+      await applyUser(session);
     });
 
     return () => {
@@ -54,9 +59,28 @@ export default function SiteHeader() {
 
   async function logout() {
     await signOutUser();
+    setUser(null);
     setName("");
+    setHasActivePlan(false);
     window.location.href = "/auth";
   }
+
+  const navItems = user
+    ? hasActivePlan
+      ? [
+          { href: "/home", label: "Home" },
+          { href: "/dashboard", label: "Dashboard" },
+          { href: "/simulation", label: "Simulation" },
+        ]
+      : [
+          { href: "/home", label: "Home" },
+          { href: "/dashboard", label: "Dashboard" },
+          { href: "/plans", label: "Plans" },
+        ]
+    : [
+        { href: "/", label: "About" },
+        { href: "/plans", label: "Plans" },
+      ];
 
   return (
     <header className="site-header">

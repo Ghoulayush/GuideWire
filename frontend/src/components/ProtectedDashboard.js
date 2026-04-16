@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import DashboardClient from "@/components/DashboardClient";
-import UserTabs from "@/components/UserTabs";
 import { getCurrentSession, onAuthStateChange } from "@/lib/supabase";
 
 export default function ProtectedDashboard({ storyHtml }) {
@@ -69,10 +68,5 @@ export default function ProtectedDashboard({ storyHtml }) {
     );
   }
 
-  return (
-    <>
-      <UserTabs />
-      <DashboardClient storyHtml={storyHtml} />
-    </>
-  );
+  return <DashboardClient storyHtml={storyHtml} />;
 }

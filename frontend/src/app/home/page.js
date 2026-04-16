@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import UserTabs from "@/components/UserTabs";
 
 const tabs = [
   {
@@ -26,7 +25,6 @@ export default function HomePage() {
   return (
     <ProtectedRoute>
       <main className="home-shell">
-        <UserTabs />
         <section className="home-hero">
           <p className="kicker">Logged-in Workspace</p>
           <h1>Welcome to your GigShield home.</h1>

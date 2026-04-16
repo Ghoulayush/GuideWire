@@ -1,137 +1,131 @@
+Goal
+Stabilize deployed production stack (Vercel frontend + Render backend + Supabase DB), remove UX bugs, and confirm end-to-end reliability before new feature expansion.
+## Deployment Context (Current)
+- Frontend: deployed on Vercel
+- Backend: deployed on Render
+- DB target: Supabase Postgres via `DATABASE_URL` (backend)
+- Auth: Supabase session-based (frontend)
+- Payments: Razorpay test mode integration present
 ## Non-Negotiable Execution Rules
-
 1. Work on exactly ONE task at a time.
 2. Do not start next task until user explicitly replies: `NEXT`.
 3. After each task, stop and report:
    - changed files
    - what works now
    - verification run + result
-   - required secrets/inputs for next task
-4. If blocked, ask only the minimum required question(s), then wait.
+   - required inputs/secrets for next task
+4. If blocked, ask only minimum required question(s), then wait.
 5. Keep responses short (max 10 bullets).
-
+6. Prefer fixing production-impact issues first; defer new features until stability checks pass.
 ## Task Order (Sequential Only)
-
-- T1: Post-login app structure (Home, Dashboard, Simulation, Subscription tabs)
-- T2: Supabase check/integration (auth + issue storage)
-- T3: Razorpay subscription flow
-- T4: Admin interface
-- T5: OpenMap location picker + auto-detect/fix flow
-- T6: UX animations
-- T7: Mobile app conversion plan + starter implementation
-
+- T1: Deployed environment smoke audit
+- T2: UI spacing and collision fixes
+- T3: Remove duplicate post-login navbar
+- T4: Dynamic navbar by auth + active subscription state
+- T5: Razorpay production-path debugging (test mode)
+- T6: Map location detection reliability improvements
+- T7: Next.js workspace/lockfile warning fix
+- T8: Backend persistence verification on Supabase
+- T9: Test suite alignment and CI sanity
+- T10: Final go/no-go checklist for production hardening
 ## Task Specs
-
-### T1 — Post-login structure
-
+### T1 — Deployed environment smoke audit
 **Deliverable**
-
-- Auth redirects to logged-in home shell with tabs: Dashboard, Simulation, Subscription.
-- Route protection for authenticated users.
-  **Acceptance**
-- Login/signup lands on user home.
-- Tabs navigate correctly.
-- Unauthenticated access redirects to login.
-  **Stop after completion and wait for `NEXT`.**
-
+- Verify frontend->backend connectivity in deployed URLs.
+- Verify `/health` reports expected mode and service readiness.
+**Acceptance**
+- Frontend can hit deployed backend API.
+- Core routes respond without CORS/network errors.
+**Stop and wait for `NEXT`.**
 ---
-
-### T2 — Supabase integration
-
+### T2 — UI spacing and collision fixes
 **Deliverable**
-
-- Confirm existing Supabase usage; if missing, add it.
-- Tell how to setup the supabase database for this project and which free tier database to use and where to input the SUPABASE_URL and SUPABASE_ANON_KEY
-- Persist user profile + delivery issue records.
-  **Needs from user before/while task**
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- DB schema preference (or use default proposed schema)
-  **Acceptance**
-- User data persists after refresh/restart.
-- Issue submission creates DB record.
-  **Stop after completion and wait for `NEXT`.**
-
+- Fix button/text/card spacing collisions in deployed UI (desktop + mobile).
+**Acceptance**
+- No visible overlap/collision across auth, home, dashboard, subscription, admin.
+**Stop and wait for `NEXT`.**
 ---
-
-### T3 — Razorpay subscriptions
-
+### T3 — Remove duplicate post-login navbar
 **Deliverable**
-
-- Subscription tab wired to Razorpay checkout.
-  **Needs from user**
-- `RAZORPAY_KEY_ID`
-- `RAZORPAY_KEY_SECRET`
-- plan IDs / amounts / billing cycle
-  **Acceptance**
-- Test payment works in sandbox.
-- Payment status reflected in app.
-  **Stop after completion and wait for `NEXT`.**
-
+- Keep only one navigation system after login.
+- Remove secondary tab strip above dashboard boxes.
+**Acceptance**
+- Logged-in views show only intended top navbar.
+**Stop and wait for `NEXT`.**
 ---
-
-### T4 — Admin interface
-
+### T4 — Dynamic navbar by auth + active plan state
 **Deliverable**
-
-- Admin login + dashboard for users/issues/subscriptions.
-  **Acceptance**
-- Admin-only access enforced.
-- Admin can view/filter core records.
-  **Stop after completion and wait for `NEXT`.**
-
+- Logged-out: `About`, `Plans`, `Login`
+- Logged-in, no active plan: `Home`, `Dashboard`, `Plans`
+- Logged-in, active plan: `Home`, `Dashboard`, `Simulation` (hide `Plans`)
+**Acceptance**
+- `About` hidden after login.
+- Nav switches correctly when subscription status changes.
+**Stop and wait for `NEXT`.**
 ---
-
-### T5 — OpenMap location flow
-
+### T5 — Razorpay debugging (test mode)
 **Deliverable**
-
-- Map picker + auto-location detection + manual correction.
-- Store corrected coordinates with issue.
-  **Needs from user**
-- Preferred map stack (Mapbox / Google Maps / Leaflet + OSM)
-- API key (if required by provider)
-  **Acceptance**
-- User can auto-detect and adjust pin before submit.
-  **Stop after completion and wait for `NEXT`.**
-
+- Validate full flow on deployed stack:
+  - create order
+  - checkout popup
+  - verify signature
+  - subscription status update
+- Ensure no accidental mock fallback when keys exist.
+**Acceptance**
+- Successful test payment marks subscription `ACTIVE`.
+- Errors are user-readable and traceable in logs.
+**Needs**
+- Render env: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
+- Vercel env: `NEXT_PUBLIC_RAZORPAY_KEY_ID`
+**Stop and wait for `NEXT`.**
 ---
-
-### T6 — Animations
-
+### T6 — Map geolocation reliability
 **Deliverable**
-
-- Add purposeful animations on key screens (login, dashboard cards, tab transitions).
-  **Acceptance**
-- Smooth on mobile + desktop.
-- No layout shift or accessibility regressions.
-  **Stop after completion and wait for `NEXT`.**
-
+- Improve detect-location flow with clearer success/failure UX.
+- Keep manual correction path (pin drag/click + lat/lng edit).
+**Acceptance**
+- Detect button gives accurate status message.
+- User can correct location before submit every time.
+**Stop and wait for `NEXT`.**
 ---
-
-### T7 — Convert to app
-
+### T7 — Next.js warning fix
 **Deliverable**
-
-- Mobile conversion approach (PWA-first or React Native/Expo wrapper) + initial implementation.
-  **Needs from user**
-- Preferred path: `PWA` or `React Native/Expo`
-- Target platform: Android / iOS / both
-  **Acceptance**
-- Build/run instructions provided.
-- Core flows usable on selected platform(s).
-  **Stop after completion.**
-
+- Resolve workspace root/lockfile warning via repo-consistent config strategy.
+**Acceptance**
+- Build/deploy logs no longer show root/lockfile inference warning.
+**Stop and wait for `NEXT`.**
+---
+### T8 — Backend persistence verification on Supabase
+**Deliverable**
+- Confirm backend writes to Supabase Postgres tables and survives backend restart.
+- Verify workers/policies/claims/subscriptions persist.
+**Acceptance**
+- Data remains after Render restart.
+- `/health` reports database mode.
+- Supabase table rows match API operations.
+**Stop and wait for `NEXT`.**
+---
+### T9 — Test suite alignment and CI sanity
+**Deliverable**
+- Reconcile known failing/stale tests with current API surface.
+- Ensure focused tests pass and document expected skips/failures.
+**Acceptance**
+- Core backend/frontend checks pass.
+- Any intentionally failing legacy tests are documented with reason.
+**Stop and wait for `NEXT`.**
+---
+### T10 — Final production hardening checkpoint
+**Deliverable**
+- Provide go/no-go report with risks and remaining blockers.
+- List minimal must-fix items before scaling or app conversion.
+**Acceptance**
+- Clear production readiness decision with evidence.
+**Stop after completion.**
 ## Required Response Format After Each Task
-
-- Status: DONE / BLOCKED
-- Files changed
-- Verification performed
-- Known risks
-- Inputs needed for next task
-- Prompt: `Reply NEXT to continue`
-  Why this works:
-- Very low token overhead.
-- Forces checkpoint-based execution.
-- Prevents parallel task jumping.
-- Makes the agent ask for keys only when needed.
+1) Status: DONE / BLOCKED
+2) Files changed
+3) What is working now
+4) Verification run + result
+5) Inputs needed for next task
+6) Risks/notes (short)
+7) `Reply NEXT to continue`

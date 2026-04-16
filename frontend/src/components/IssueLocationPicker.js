@@ -18,8 +18,10 @@ export default function IssueLocationPicker({ value, onChange }) {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const markerRef = useRef(null);
-  const leafletRef = useRef(null);
+  const locationRef = useRef(fallbackLocation);
   const [mapError, setMapError] = useState("");
+  const [locationInfo, setLocationInfo] = useState("");
+  const [detecting, setDetecting] = useState(false);
 
   const location = useMemo(
     () => ({
@@ -31,14 +33,18 @@ export default function IssueLocationPicker({ value, onChange }) {
     [value],
   );
 
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+
   const updateLocation = useCallback(
     (next) => {
-    onChange({
-      ...location,
-      ...next,
-    });
+      onChange({
+        ...locationRef.current,
+        ...next,
+      });
     },
-    [location, onChange],
+    [onChange],
   );
 
   useEffect(() => {
@@ -50,7 +56,6 @@ export default function IssueLocationPicker({ value, onChange }) {
       try {
         const mod = await import("leaflet");
         const L = mod.default || mod;
-        leafletRef.current = L;
 
         const icon = new L.Icon({
           iconUrl:
@@ -63,8 +68,10 @@ export default function IssueLocationPicker({ value, onChange }) {
           iconAnchor: [12, 41],
         });
 
+        const initial = locationRef.current;
+
         const map = L.map(mapContainerRef.current).setView(
-          [location.latitude, location.longitude],
+          [initial.latitude, initial.longitude],
           14,
         );
 
@@ -72,7 +79,7 @@ export default function IssueLocationPicker({ value, onChange }) {
           attribution: "&copy; OpenStreetMap contributors",
         }).addTo(map);
 
-        const marker = L.marker([location.latitude, location.longitude], {
+        const marker = L.marker([initial.latitude, initial.longitude], {
           draggable: true,
           icon,
         }).addTo(map);
@@ -119,9 +126,8 @@ export default function IssueLocationPicker({ value, onChange }) {
         mapRef.current = null;
       }
       markerRef.current = null;
-      leafletRef.current = null;
     };
-  }, [location.latitude, location.longitude, updateLocation]);
+  }, [updateLocation]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -132,12 +138,16 @@ export default function IssueLocationPicker({ value, onChange }) {
     map.panTo([location.latitude, location.longitude], { animate: true });
   }, [location.latitude, location.longitude]);
 
-  function detectLocation() {
+  const detectLocation = useCallback(() => {
     setMapError("");
+    setLocationInfo("");
+
     if (typeof window === "undefined" || !navigator.geolocation) {
       setMapError("Geolocation is not available in this browser.");
       return;
     }
+
+    setDetecting(true);
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -156,22 +166,67 @@ export default function IssueLocationPicker({ value, onChange }) {
         }
 
         updateLocation(next);
-      },
-      () => {
-        setMapError(
-          "Could not detect location. Allow location permission or set pin manually.",
+        setLocationInfo(
+          `Location captured (${next.latitude}, ${next.longitude})${next.accuracy ? ` with ${next.accuracy}m accuracy` : ""}.`,
         );
+        setDetecting(false);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      (error) => {
+        if (error?.code === 1) {
+          setMapError("Location permission denied. Please allow it and retry.");
+        } else if (error?.code === 2) {
+          setMapError("Location unavailable. Try moving to an open area and retry.");
+        } else if (error?.code === 3) {
+          setMapError("Location request timed out. Please retry.");
+        } else {
+          setMapError(
+            "Could not detect location. Allow location permission or set pin manually.",
+          );
+        }
+        setDetecting(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     );
-  }
+  }, [updateLocation]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function maybeAutoDetect() {
+      if (
+        typeof navigator === "undefined" ||
+        !navigator.permissions ||
+        !navigator.geolocation
+      ) {
+        return;
+      }
+
+      try {
+        const permission = await navigator.permissions.query({
+          name: "geolocation",
+        });
+        if (!active) return;
+        if (permission.state === "granted") {
+          detectLocation();
+        }
+      } catch {
+        // Ignore unsupported permissions API and rely on manual detect.
+      }
+    }
+
+    maybeAutoDetect();
+
+    return () => {
+      active = false;
+    };
+  }, [detectLocation]);
 
   return (
     <div className="location-picker">
       <div className="location-picker-header">
         <p className="metric-title">Issue Location</p>
-        <button type="button" onClick={detectLocation}>
-          Detect My Location
+        <button type="button" onClick={detectLocation} disabled={detecting}>
+          {detecting ? "Detecting..." : "Detect My Location"}
         </button>
       </div>
 
@@ -216,6 +271,8 @@ export default function IssueLocationPicker({ value, onChange }) {
         Source: {location.source || "manual"}
         {location.accuracy ? ` | Accuracy: ${location.accuracy}m` : ""}
       </p>
+
+      {locationInfo && <p className="notice">{locationInfo}</p>}
 
       {mapError && <p className="error">{mapError}</p>}
     </div>

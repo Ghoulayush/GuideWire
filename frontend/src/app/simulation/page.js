@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import UserTabs from "@/components/UserTabs";
 
 const bullets = [
   "Use the dashboard trigger flow for live AI event simulation.",
@@ -14,7 +13,6 @@ export default function SimulationPage() {
   return (
     <ProtectedRoute>
       <main className="home-shell">
-        <UserTabs />
         <section className="home-hero">
           <p className="kicker">Simulation</p>
           <h1>AI Simulation Workspace</h1>

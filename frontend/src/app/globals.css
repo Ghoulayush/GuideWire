@@ -149,7 +149,9 @@ a {
   padding: 0.42rem 0.78rem;
   font-size: 0.82rem;
   background: rgba(255, 255, 255, 0.75);
-  transition: transform 180ms ease, border-color 180ms ease,
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
     background-color 180ms ease;
 }
 
@@ -189,7 +191,31 @@ a {
   background: rgba(255, 255, 255, 0.74);
   padding: 1rem;
   animation: cardReveal 520ms ease both;
-  transition: transform 220ms ease, box-shadow 220ms ease;
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.home-grid .home-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-card p {
+  margin: 0.45rem 0 0;
+}
+
+.home-card button,
+.home-card .cta-primary,
+.home-card .cta-ghost {
+  margin-top: 0.85rem;
+}
+
+.home-grid .home-card button,
+.home-grid .home-card .cta-primary,
+.home-grid .home-card .cta-ghost {
+  align-self: flex-start;
+  display: inline-flex;
 }
 
 .home-card:hover {
@@ -396,11 +422,26 @@ a {
   gap: 0.6rem;
 }
 
+.auth-form button {
+  margin-top: 0.35rem;
+}
+
 .plans-grid {
   margin-top: 1rem;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.9rem;
+}
+
+.plans-grid .plan-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.plans-grid .plan-card button {
+  margin-top: 0.85rem;
+  align-self: flex-start;
+  display: inline-flex;
 }
 
 .plan-price {
@@ -543,6 +584,10 @@ a {
   gap: 0.6rem;
 }
 
+.form-card button {
+  margin-top: 0.45rem;
+}
+
 .form-card h2,
 .table-card h3 {
   margin: 0;
@@ -580,7 +625,9 @@ button {
   background: linear-gradient(140deg, var(--cool), #2279af);
   font-weight: 600;
   cursor: pointer;
-  transition: transform 160ms ease, filter 160ms ease;
+  transition:
+    transform 160ms ease,
+    filter 160ms ease;
 }
 
 button:hover:not(:disabled) {
