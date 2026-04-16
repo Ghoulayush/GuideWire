@@ -3,144 +3,117 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    create_engine,
-)
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./gigshield.db")
 
-engine = create_engine(DATABASE_URL)
+def _resolve_database_url() -> str:
+    raw = os.getenv("DATABASE_URL", "sqlite:///./gigshield.db").strip()
+
+    if raw.startswith("postgres://"):
+        return raw.replace("postgres://", "postgresql://", 1)
+
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return "sqlite:///./gigshield.db"
+
+    return raw
+
+
+DATABASE_URL = _resolve_database_url()
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
-class Worker(Base):
-    __tablename__ = "workers"
+class WorkerRecord(Base):
+    __tablename__ = "gw_workers"
 
-    worker_id = Column(Text, primary_key=True)
-    name = Column(Text, nullable=False)
-    city = Column(Text, nullable=False)
-    pincode = Column(Text)
-    platform = Column(Text)
-    avg_daily_income = Column(Float)
-    experience_days = Column(Integer, default=30)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    policies = relationship("Policy", back_populates="worker")
-    claims = relationship("Claim", back_populates="worker")
-    disruption_events = relationship("DisruptionEvent", back_populates="worker")
+    worker_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    city: Mapped[str] = mapped_column(Text, nullable=False)
+    pincode: Mapped[str] = mapped_column(Text, nullable=False)
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    avg_daily_income: Mapped[float] = mapped_column(Float, nullable=False)
+    experience_days: Mapped[int] = mapped_column(Integer, default=30)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-class Policy(Base):
-    __tablename__ = "policies"
+class RiskProfileRecord(Base):
+    __tablename__ = "gw_risk_profiles"
 
-    policy_id = Column(Text, primary_key=True)
-    worker_id = Column(Text, ForeignKey("workers.worker_id"))
-    weekly_premium = Column(Float)
-    coverage_per_week = Column(Float)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    worker = relationship("Worker", back_populates="policies")
-    claims = relationship("Claim", back_populates="policy")
-
-
-class Claim(Base):
-    __tablename__ = "claims"
-
-    claim_id = Column(Text, primary_key=True)
-    worker_id = Column(Text, ForeignKey("workers.worker_id"))
-    policy_id = Column(Text, ForeignKey("policies.policy_id"))
-    event_id = Column(Text)
-    claimed_amount = Column(Float)
-    approved_payout = Column(Float)
-    status = Column(Text, default='PENDING')
-    fraud_score = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    worker = relationship("Worker", back_populates="claims")
-    policy = relationship("Policy", back_populates="claims")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    worker_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    city: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pincode: Mapped[str | None] = mapped_column(Text, nullable=True)
+    avg_daily_income: Mapped[float | None] = mapped_column(Float, nullable=True)
+    platform: Mapped[str | None] = mapped_column(Text, nullable=True)
+    risk_score: Mapped[float] = mapped_column(Float, nullable=False)
+    risk_band: Mapped[str] = mapped_column(String(20), nullable=False)
+    suggested_weekly_premium: Mapped[float] = mapped_column(Float, nullable=False)
+    external_frequency_index: Mapped[float | None] = mapped_column(Float, nullable=True)
+    activity_index: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-class DisruptionEvent(Base):
-    __tablename__ = "disruption_events"
+class PolicyRecord(Base):
+    __tablename__ = "gw_policies"
 
-    event_id = Column(Text, primary_key=True)
-    worker_id = Column(Text, ForeignKey("workers.worker_id"))
-    disruption_type = Column(Text)
-    severity = Column(Integer)
-    description = Column(Text)
-    triggered = Column(Boolean, default=False)
-    payout_amount = Column(Float)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    worker = relationship("Worker", back_populates="disruption_events")
+    policy_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    worker_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    weekly_premium: Mapped[float] = mapped_column(Float, nullable=False)
+    coverage_per_week: Mapped[float] = mapped_column(Float, nullable=False)
+    risk_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    risk_band: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-# Create tables
-Base.metadata.create_all(bind=engine)
+class EventRecord(Base):
+    __tablename__ = "gw_events"
 
-    weekly_premium = Column(Float, nullable=False)
-    risk_score = Column(Float, nullable=False)
-    risk_band = Column(String, nullable=False)
-    coverage_per_week = Column(Float, nullable=False)
-    active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    worker = relationship("Worker", back_populates="policies")
-
-
-class DisruptionEvent(Base):
-    __tablename__ = "disruptions"
-
-    id = Column(Integer, primary_key=True, index=True)
-    worker_id = Column(Integer, ForeignKey("workers.id"))
-    disruption_type = Column(String, nullable=False)
-    severity = Column(Integer, nullable=False)
-    rainfall_mm = Column(Float, nullable=True)
-    temperature_c = Column(Float, nullable=True)
-    heat_index = Column(Float, nullable=True)
-    aqi = Column(Integer, nullable=True)
-    flood_alert = Column(Boolean, default=False)
-    curfew = Column(Boolean, default=False)
-    source = Column(String, default="simulated")
-    description = Column(String, nullable=True)
-    raw_payload = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    worker = relationship("Worker", back_populates="disruptions")
-    payouts = relationship("Payout", back_populates="event")
+    event_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    worker_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    disruption_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    severity: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    start_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
-class Payout(Base):
-    __tablename__ = "payouts"
+class ClaimRecord(Base):
+    __tablename__ = "gw_claims"
 
-    id = Column(Integer, primary_key=True, index=True)
-    worker_id = Column(Integer, ForeignKey("workers.id"))
-    policy_id = Column(Integer, ForeignKey("policies.id"))
-    event_id = Column(Integer, ForeignKey("disruptions.id"))
-    amount = Column(Float, nullable=False)
-    status = Column(String, default="approved")
-    fraud_flag = Column(Boolean, default=False)
-    fraud_reasons = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    claim_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    worker_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    policy_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    event_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    claimed_income_loss: Mapped[float] = mapped_column(Float, nullable=False)
+    approved_payout: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    worker = relationship("Worker", back_populates="payouts")
-    policy = relationship("Policy")
-    event = relationship("DisruptionEvent", back_populates="payouts")
+
+class SubscriptionRecord(Base):
+    __tablename__ = "gw_subscriptions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    customer_name: Mapped[str] = mapped_column(Text, nullable=False)
+    customer_email: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    plan_id: Mapped[str] = mapped_column(Text, nullable=False)
+    plan_name: Mapped[str] = mapped_column(Text, nullable=False)
+    amount_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False)
+    order_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    payment_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 def init_db() -> None:
-    from . import models  # noqa: F401  # ensure pydantic models imported if needed
-
     Base.metadata.create_all(bind=engine)

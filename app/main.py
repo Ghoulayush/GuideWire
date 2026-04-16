@@ -17,6 +17,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from .db import init_db
+from .repositories.store import store
 from .schemas import (
     AnalyticsMetrics,
     Claim,
@@ -31,6 +33,15 @@ from .services.fraud import FraudEngine
 from .services.triggers import DisruptionInput, evaluate_triggers
 from .services.ml_risk import risk_model
 from .services.premium_calculator import premium_calculator
+
+USE_DB_PERSISTENCE = os.getenv("USE_DB_PERSISTENCE", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
+if USE_DB_PERSISTENCE:
+    init_db()
 
 app = FastAPI(title="Gig Worker Parametric Insurance Platform")
 
@@ -51,6 +62,12 @@ async def startup_event():
     print("=" * 50)
     print("🚀 Starting GigShield AI Platform...")
     print("=" * 50)
+
+    if USE_DB_PERSISTENCE:
+        init_db()
+        print("✅ Database persistence enabled")
+    else:
+        print("⚠️ Database persistence disabled; using in-memory mode")
 
     # Load ML model
     if not risk_model.load_model():
@@ -82,13 +99,15 @@ async def continuous_trigger_monitor():
                 f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔍 Scanning for disruptions..."
             )
 
-            for worker_id, worker in WORKERS.items():
+            workers = list_workers()
+            for worker in workers:
+                worker_id = worker["worker_id"]
                 rainfall_mm = random.randint(0, 100)
                 aqi = random.randint(50, 400)
                 heat_index = random.randint(30, 48)
 
                 # Check if policy is active
-                policy = next((p for p in POLICIES if p.worker_id == worker_id), None)
+                policy = get_active_policy(worker_id)
                 if not policy or not getattr(policy, "active", True):
                     continue
 
@@ -125,8 +144,8 @@ async def continuous_trigger_monitor():
 async def process_auto_claim(worker_id: str, payout_amount: float):
     """Complete claim pipeline: Trigger → Claim → Fraud → Payout"""
 
-    worker = WORKERS.get(worker_id)
-    policy = next((p for p in POLICIES if p.worker_id == worker_id), None)
+    worker = get_worker(worker_id)
+    policy = get_active_policy(worker_id)
 
     if not worker or not policy:
         print(f"⚠️ Cannot process claim: Worker or policy not found for {worker_id}")
@@ -162,12 +181,18 @@ async def process_auto_claim(worker_id: str, payout_amount: float):
         claim.status = ClaimStatus.REJECTED
         claim.approved_payout = 0
         print(f"🚫 Claim REJECTED - High fraud probability ({fraud_score}/100)")
-        CLAIMS.append(claim)
+        if USE_DB_PERSISTENCE:
+            store.insert_claim(claim)
+        else:
+            CLAIMS.append(claim)
         return
 
     claim.status = ClaimStatus.PAID
     claim.approved_payout = payout_amount
-    CLAIMS.append(claim)
+    if USE_DB_PERSISTENCE:
+        store.insert_claim(claim)
+    else:
+        CLAIMS.append(claim)
 
     print(f"💰 Payout: ₹{payout_amount}")
     print(f"✅ Claim PAID - Fraud score: {fraud_score}/100")
@@ -297,6 +322,55 @@ def is_razorpay_configured() -> bool:
     return bool(get_razorpay_key_id() and get_razorpay_key_secret())
 
 
+def get_worker(worker_id: str) -> Optional[dict]:
+    if USE_DB_PERSISTENCE:
+        return store.get_worker(worker_id)
+    return WORKERS.get(worker_id)
+
+
+def list_workers() -> List[dict]:
+    if USE_DB_PERSISTENCE:
+        return store.list_workers()
+    return list(WORKERS.values())
+
+
+def get_active_policy(worker_id: str) -> Optional[Policy]:
+    if USE_DB_PERSISTENCE:
+        return store.get_active_policy(worker_id)
+    return next(
+        (
+            p
+            for p in POLICIES
+            if p.worker_id == worker_id and getattr(p, "active", True)
+        ),
+        None,
+    )
+
+
+def list_policies() -> List[Policy]:
+    if USE_DB_PERSISTENCE:
+        return store.list_policies()
+    return POLICIES
+
+
+def list_claims() -> List[Claim]:
+    if USE_DB_PERSISTENCE:
+        return store.list_claims()
+    return CLAIMS
+
+
+def list_events() -> List[DisruptionEvent]:
+    if USE_DB_PERSISTENCE:
+        return store.list_events()
+    return EVENTS
+
+
+def list_risks() -> List[RiskProfile]:
+    if USE_DB_PERSISTENCE:
+        return store.list_risks()
+    return RISKS
+
+
 # ========== Helper to convert Policy to dict with all fields ==========
 def policy_to_dict(policy: Policy) -> dict:
     """Convert Policy object to dict including all fields"""
@@ -322,20 +396,27 @@ def policy_to_dict(policy: Policy) -> dict:
 @app.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard():
     """Get dashboard with current metrics and latest worker/policy data."""
-    metrics: AnalyticsMetrics = build_metrics(RISKS, POLICIES, CLAIMS, EVENTS)
+    risks = list_risks()
+    policies = list_policies()
+    claims = list_claims()
+    events = list_events()
+
+    metrics: AnalyticsMetrics = build_metrics(risks, policies, claims, events)
     current_worker = None
     current_risk = None
     current_policy = None
 
-    if WORKERS:
-        last_id = list(WORKERS.keys())[-1]
-        current_worker = WORKERS[last_id]
-        current_risk = next((r for r in RISKS if r.worker_id == last_id), None)
-        current_policy = next((p for p in POLICIES if p.worker_id == last_id), None)
+    workers = list_workers()
+    if workers:
+        last_worker = workers[-1]
+        last_id = last_worker["worker_id"]
+        current_worker = last_worker
+        current_risk = next((r for r in risks if r.worker_id == last_id), None)
+        current_policy = next((p for p in policies if p.worker_id == last_id), None)
 
     return DashboardResponse(
-        policies=[policy_to_dict(p) for p in POLICIES],
-        claims=CLAIMS[-10:],
+        policies=[policy_to_dict(p) for p in policies],
+        claims=claims[-10:],
         metrics=metrics,
         current_worker=current_worker,
         current_risk=current_risk,
@@ -363,7 +444,7 @@ async def onboard_worker(request: OnboardWorkerRequest):
     ml_risk = risk_model.predict_risk(worker_data_for_ml)
     premium_result = premium_calculator.calculate(worker_data_for_ml, ml_risk)
 
-    WORKERS[request.worker_id] = {
+    worker_payload = {
         "worker_id": request.worker_id,
         "name": request.name,
         "city": request.city,
@@ -373,6 +454,11 @@ async def onboard_worker(request: OnboardWorkerRequest):
         "experience_days": 30,
         "joined_at": datetime.utcnow().isoformat(),
     }
+    if USE_DB_PERSISTENCE:
+        worker_data = store.upsert_worker(worker_payload)
+    else:
+        WORKERS[request.worker_id] = worker_payload
+        worker_data = WORKERS[request.worker_id]
 
     risk = RiskProfile(
         worker_id=request.worker_id,
@@ -388,7 +474,10 @@ async def onboard_worker(request: OnboardWorkerRequest):
         else 0.4,
         activity_index=0.8,
     )
-    RISKS.append(risk)
+    if USE_DB_PERSISTENCE:
+        store.insert_risk(risk)
+    else:
+        RISKS.append(risk)
 
     policy = Policy(
         policy_id=str(uuid4()),
@@ -400,10 +489,13 @@ async def onboard_worker(request: OnboardWorkerRequest):
         active=True,
         created_at=datetime.utcnow(),
     )
-    POLICIES.append(policy)
+    if USE_DB_PERSISTENCE:
+        store.insert_policy(policy)
+    else:
+        POLICIES.append(policy)
 
     return OnboardWorkerResponse(
-        worker=WORKERS[request.worker_id],
+        worker=worker_data,
         risk=risk,
         policy=policy,
         message=f"✅ Onboarded {request.name} | Risk: {ml_risk['risk_band']} ({ml_risk['risk_score']:.0f}/100) | Premium: ₹{premium_result['weekly_premium']}/week",
@@ -415,7 +507,7 @@ async def onboard_worker(request: OnboardWorkerRequest):
 @app.post("/events/trigger", response_model=TriggerEventResponse)
 async def trigger_event(request: TriggerEventRequest):
     """Trigger a disruption event and evaluate for claim payout."""
-    worker = WORKERS.get(request.worker_id)
+    worker = get_worker(request.worker_id)
     if not worker:
         return TriggerEventResponse(
             event=None,
@@ -427,7 +519,7 @@ async def trigger_event(request: TriggerEventRequest):
             payout_amount=0,
         )
 
-    policy = next((p for p in POLICIES if p.worker_id == request.worker_id), None)
+    policy = get_active_policy(request.worker_id)
     if not policy or not getattr(policy, "active", True):
         return TriggerEventResponse(
             event=None,
@@ -447,7 +539,10 @@ async def trigger_event(request: TriggerEventRequest):
         description=request.description,
         start_time=datetime.utcnow(),
     )
-    EVENTS.append(event)
+    if USE_DB_PERSISTENCE:
+        store.insert_event(event)
+    else:
+        EVENTS.append(event)
 
     avg_daily_income = worker["avg_daily_income"]
 
@@ -500,7 +595,10 @@ async def trigger_event(request: TriggerEventRequest):
             claim.status = ClaimStatus.PAID
             message = f"💰 Auto-claim APPROVED! ₹{model_payout} paid to UPI"
 
-        CLAIMS.append(claim)
+        if USE_DB_PERSISTENCE:
+            store.insert_claim(claim)
+        else:
+            CLAIMS.append(claim)
 
     final_triggered = (
         triggered and claim is not None and claim.status == ClaimStatus.PAID
@@ -521,11 +619,11 @@ async def trigger_event(request: TriggerEventRequest):
 @app.post("/api/simulate/rain")
 async def simulate_rain_event(request: SimulateEventRequest):
     """Demo control - simulate rain without waiting for real weather"""
-    worker = WORKERS.get(request.worker_id)
+    worker = get_worker(request.worker_id)
     if not worker:
         return {"error": f"Worker {request.worker_id} not found"}
 
-    policy = next((p for p in POLICIES if p.worker_id == request.worker_id), None)
+    policy = get_active_policy(request.worker_id)
     if not policy or not getattr(policy, "active", True):
         return {"error": "No active policy found"}
 
@@ -544,19 +642,23 @@ async def simulate_rain_event(request: SimulateEventRequest):
 @app.get("/analytics/metrics", response_model=AnalyticsMetrics)
 async def get_analytics_metrics():
     """Get analytics metrics."""
-    return build_metrics(RISKS, POLICIES, CLAIMS, EVENTS)
+    return build_metrics(list_risks(), list_policies(), list_claims(), list_events())
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    workers = list_workers()
+    policies = list_policies()
+    claims = list_claims()
     return {
         "status": "healthy",
         "ml_model_loaded": risk_model.is_trained,
-        "total_workers": len(WORKERS),
-        "total_policies": len(POLICIES),
-        "total_claims": len(CLAIMS),
+        "total_workers": len(workers),
+        "total_policies": len(policies),
+        "total_claims": len(claims),
         "background_monitoring": "active",
+        "persistence_mode": "database" if USE_DB_PERSISTENCE else "memory",
         "timestamp": datetime.utcnow().isoformat(),
     }
 
@@ -564,14 +666,15 @@ async def health_check():
 @app.get("/fraud/stats")
 async def fraud_statistics():
     """Get fraud detection statistics"""
-    rejected_claims = [c for c in CLAIMS if c.status == ClaimStatus.REJECTED]
-    paid_claims = [c for c in CLAIMS if c.status == ClaimStatus.PAID]
+    claims = list_claims()
+    rejected_claims = [c for c in claims if c.status == ClaimStatus.REJECTED]
+    paid_claims = [c for c in claims if c.status == ClaimStatus.PAID]
 
     return {
-        "total_claims": len(CLAIMS),
+        "total_claims": len(claims),
         "approved_claims": len(paid_claims),
         "rejected_claims": len(rejected_claims),
-        "fraud_rate": len(rejected_claims) / len(CLAIMS) if CLAIMS else 0,
+        "fraud_rate": len(rejected_claims) / len(claims) if claims else 0,
         "total_payouts": sum(c.approved_payout for c in paid_claims),
         "fraud_prevented": sum(c.claimed_income_loss for c in rejected_claims),
     }
@@ -580,18 +683,19 @@ async def fraud_statistics():
 @app.get("/policies")
 async def get_policies():
     """Return all policies"""
-    return [policy_to_dict(p) for p in POLICIES]
+    return [policy_to_dict(p) for p in list_policies()]
 
 
 @app.get("/workers")
 async def get_workers():
     """Return all workers."""
-    return list(WORKERS.values())
+    return list_workers()
 
 
 @app.get("/claims")
 async def get_claims():
     """Return all claims"""
+    claims = list_claims()
     return [
         {
             "claim_id": c.claim_id,
@@ -599,7 +703,7 @@ async def get_claims():
             "status": c.status.value,
             "approved_payout": c.approved_payout,
         }
-        for c in CLAIMS
+        for c in claims
     ]
 
 
@@ -669,22 +773,24 @@ async def create_razorpay_order(request: CreateRazorpayOrderRequest):
 
     if not is_razorpay_configured():
         mock_order_id = f"mock_order_{uuid4().hex[:12]}"
-        SUBSCRIPTIONS.append(
-            {
-                "id": str(uuid4()),
-                "created_at": datetime.utcnow().isoformat(),
-                "customer_name": request.customer_name,
-                "customer_email": request.customer_email,
-                "plan_id": request.plan_id,
-                "plan_name": plan["name"],
-                "amount_paise": amount,
-                "currency": currency,
-                "order_id": mock_order_id,
-                "payment_id": None,
-                "status": "CREATED_MOCK",
-                "mode": "mock",
-            }
-        )
+        sub_item = {
+            "id": str(uuid4()),
+            "created_at": datetime.utcnow().isoformat(),
+            "customer_name": request.customer_name,
+            "customer_email": request.customer_email,
+            "plan_id": request.plan_id,
+            "plan_name": plan["name"],
+            "amount_paise": amount,
+            "currency": currency,
+            "order_id": mock_order_id,
+            "payment_id": None,
+            "status": "CREATED_MOCK",
+            "mode": "mock",
+        }
+        if USE_DB_PERSISTENCE:
+            store.add_subscription(sub_item)
+        else:
+            SUBSCRIPTIONS.append(sub_item)
         return CreateRazorpayOrderResponse(
             status="ok",
             mode="mock",
@@ -732,22 +838,24 @@ async def create_razorpay_order(request: CreateRazorpayOrderRequest):
         )
 
     order_id = str(order.get("id", ""))
-    SUBSCRIPTIONS.append(
-        {
-            "id": str(uuid4()),
-            "created_at": datetime.utcnow().isoformat(),
-            "customer_name": request.customer_name,
-            "customer_email": request.customer_email,
-            "plan_id": request.plan_id,
-            "plan_name": plan["name"],
-            "amount_paise": amount,
-            "currency": currency,
-            "order_id": order_id,
-            "payment_id": None,
-            "status": "CREATED",
-            "mode": "live",
-        }
-    )
+    sub_item = {
+        "id": str(uuid4()),
+        "created_at": datetime.utcnow().isoformat(),
+        "customer_name": request.customer_name,
+        "customer_email": request.customer_email,
+        "plan_id": request.plan_id,
+        "plan_name": plan["name"],
+        "amount_paise": amount,
+        "currency": currency,
+        "order_id": order_id,
+        "payment_id": None,
+        "status": "CREATED",
+        "mode": "live",
+    }
+    if USE_DB_PERSISTENCE:
+        store.add_subscription(sub_item)
+    else:
+        SUBSCRIPTIONS.append(sub_item)
 
     return CreateRazorpayOrderResponse(
         status="ok",
@@ -762,19 +870,30 @@ async def create_razorpay_order(request: CreateRazorpayOrderRequest):
 
 @app.post("/payments/razorpay/verify", response_model=VerifyRazorpayPaymentResponse)
 async def verify_razorpay_payment(request: VerifyRazorpayPaymentRequest):
-    record = next(
-        (
-            s
-            for s in reversed(SUBSCRIPTIONS)
-            if s.get("order_id") == request.razorpay_order_id
-        ),
-        None,
-    )
+    if USE_DB_PERSISTENCE:
+        record = store.latest_subscription_by_order(request.razorpay_order_id)
+    else:
+        record = next(
+            (
+                s
+                for s in reversed(SUBSCRIPTIONS)
+                if s.get("order_id") == request.razorpay_order_id
+            ),
+            None,
+        )
 
     if record and record.get("mode") == "mock":
-        record["payment_id"] = request.razorpay_payment_id
-        record["status"] = "ACTIVE"
-        record["verified_at"] = datetime.utcnow().isoformat()
+        if USE_DB_PERSISTENCE:
+            store.update_subscription_by_order(
+                request.razorpay_order_id,
+                status="ACTIVE",
+                payment_id=request.razorpay_payment_id,
+                verified_at=datetime.utcnow(),
+            )
+        else:
+            record["payment_id"] = request.razorpay_payment_id
+            record["status"] = "ACTIVE"
+            record["verified_at"] = datetime.utcnow().isoformat()
         return VerifyRazorpayPaymentResponse(
             status="ok",
             verified=True,
@@ -794,8 +913,15 @@ async def verify_razorpay_payment(request: VerifyRazorpayPaymentRequest):
 
     if not hmac.compare_digest(expected, request.razorpay_signature):
         if record:
-            record["status"] = "FAILED_SIGNATURE"
-            record["payment_id"] = request.razorpay_payment_id
+            if USE_DB_PERSISTENCE:
+                store.update_subscription_by_order(
+                    request.razorpay_order_id,
+                    status="FAILED_SIGNATURE",
+                    payment_id=request.razorpay_payment_id,
+                )
+            else:
+                record["status"] = "FAILED_SIGNATURE"
+                record["payment_id"] = request.razorpay_payment_id
         return VerifyRazorpayPaymentResponse(
             status="error",
             verified=False,
@@ -803,9 +929,17 @@ async def verify_razorpay_payment(request: VerifyRazorpayPaymentRequest):
         )
 
     if record:
-        record["payment_id"] = request.razorpay_payment_id
-        record["status"] = "ACTIVE"
-        record["verified_at"] = datetime.utcnow().isoformat()
+        if USE_DB_PERSISTENCE:
+            store.update_subscription_by_order(
+                request.razorpay_order_id,
+                status="ACTIVE",
+                payment_id=request.razorpay_payment_id,
+                verified_at=datetime.utcnow(),
+            )
+        else:
+            record["payment_id"] = request.razorpay_payment_id
+            record["status"] = "ACTIVE"
+            record["verified_at"] = datetime.utcnow().isoformat()
 
     return VerifyRazorpayPaymentResponse(
         status="ok",
@@ -819,11 +953,14 @@ async def verify_razorpay_payment(request: VerifyRazorpayPaymentRequest):
     response_model=SubscriptionStatusResponse,
 )
 async def get_subscription_status(customer_email: str):
-    history = [
-        item
-        for item in SUBSCRIPTIONS
-        if item.get("customer_email", "").lower() == customer_email.lower()
-    ]
+    if USE_DB_PERSISTENCE:
+        history = store.list_subscriptions_for_email(customer_email)
+    else:
+        history = [
+            item
+            for item in SUBSCRIPTIONS
+            if item.get("customer_email", "").lower() == customer_email.lower()
+        ]
     latest = history[-1] if history else None
 
     return SubscriptionStatusResponse(
@@ -837,10 +974,14 @@ async def get_subscription_status(customer_email: str):
 
 @app.get("/payments/subscriptions", response_model=AllSubscriptionsResponse)
 async def get_all_subscriptions(status: Optional[str] = None):
-    items = SUBSCRIPTIONS
-    if status:
-        wanted = status.strip().upper()
-        items = [s for s in items if str(s.get("status", "")).upper() == wanted]
+    if USE_DB_PERSISTENCE:
+        wanted = status.strip().upper() if status else None
+        items = store.list_subscriptions(wanted)
+    else:
+        items = SUBSCRIPTIONS
+        if status:
+            wanted = status.strip().upper()
+            items = [s for s in items if str(s.get("status", "")).upper() == wanted]
     return AllSubscriptionsResponse(total=len(items), items=items)
 
 
