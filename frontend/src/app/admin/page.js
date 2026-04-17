@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import ProtectedAdminRoute from "@/components/ProtectedAdminRoute";
 import { getAdminSession, logoutAdmin } from "@/lib/admin";
 import {
@@ -66,6 +67,11 @@ export default function AdminPage() {
             <p className="kicker">Admin Console</p>
             <h1>Operations dashboard</h1>
             <p>Signed in as: {adminSession?.email || "admin"}</p>
+            <p>
+              <Link href="/admin/insurer" className="login-link">
+                Open insurer metrics dashboard
+              </Link>
+            </p>
           </div>
           <button type="button" className="logout-btn" onClick={onLogout}>
             Logout Admin

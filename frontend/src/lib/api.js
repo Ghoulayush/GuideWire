@@ -117,6 +117,8 @@ export async function triggerEvent(payload) {
         final_decision: data.message,
         detector_results: []
       },
+      claim_timeline: data.claim_timeline || [],
+      risk_alerts: data.risk_alerts || [],
       has_error: false
     };
   } catch (error) {
@@ -290,6 +292,14 @@ export async function getAllSubscriptions(filterStatus = "") {
   return await response.json();
 }
 
+export async function getInsurerMetrics() {
+  const response = await fetch(`${API_BASE_URL}/insurer/metrics`);
+  if (!response.ok) {
+    throw new Error(`Insurer metrics fetch failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
 export async function getMyClaims(token) {
   const response = await fetch(`${API_BASE_URL}/claims/me`, {
     headers: {
@@ -354,6 +364,31 @@ export async function simulateRainEvent(workerId, severity = 4) {
     console.error("Simulation error:", error);
     return { error: error.message };
   }
+}
+
+export async function initiatePayout(payload) {
+  const response = await fetch(`${API_BASE_URL}/api/payout`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.detail || `Payout initiation failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function getPayoutStatus(transactionId) {
+  const response = await fetch(`${API_BASE_URL}/api/payout/${encodeURIComponent(transactionId)}`);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.detail || `Payout status fetch failed: ${response.status}`);
+  }
+  return data;
 }
 
 export { API_BASE_URL };

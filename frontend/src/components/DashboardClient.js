@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getDashboard, getMyClaims, onboardWorker, triggerEvent } from "@/lib/api";
+import {
+  getDashboard,
+  getMyClaims,
+  getPayoutStatus,
+  initiatePayout,
+  onboardWorker,
+  triggerEvent,
+} from "@/lib/api";
 import {
   getCurrentSession,
   getCurrentUser,
@@ -301,6 +308,9 @@ export default function DashboardClient({ storyHtml }) {
   const [issueLocation, setIssueLocation] = useState(defaultIssueLocation);
   const [workerLinkStatus, setWorkerLinkStatus] = useState("");
   const [myClaims, setMyClaims] = useState([]);
+  const [payoutInfo, setPayoutInfo] = useState(null);
+  const [latestClaimTimeline, setLatestClaimTimeline] = useState([]);
+  const [riskAlerts, setRiskAlerts] = useState([]);
 
   const metrics = dashboard?.metrics;
 
@@ -440,6 +450,8 @@ export default function DashboardClient({ storyHtml }) {
       if (result.fraud_data) {
         setFraudResult(result.fraud_data);
       }
+      setLatestClaimTimeline(Array.isArray(result.claim_timeline) ? result.claim_timeline : []);
+      setRiskAlerts(Array.isArray(result.risk_alerts) ? result.risk_alerts : []);
 
       await refreshDashboard();
       await refreshMyClaims();
@@ -449,6 +461,47 @@ export default function DashboardClient({ storyHtml }) {
       setBusy("");
     }
   }
+
+  async function startPayout(claim) {
+    setBusy("payout");
+    setError("");
+    setNotice("");
+    try {
+      const amount = Number(claim.approved_payout || 0);
+      if (amount <= 0) {
+        throw new Error("This claim has no payout amount");
+      }
+
+      const result = await initiatePayout({
+        worker_id: claim.worker_id || eventForm.worker_id,
+        claim_id: claim.claim_id,
+        amount,
+      });
+
+      setPayoutInfo(result);
+      setNotice(`Payout initiated. Transaction ID: ${result.transaction_id}`);
+    } catch (err) {
+      setError(err.message || "Payout initiation failed");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  useEffect(() => {
+    if (!payoutInfo?.transaction_id || payoutInfo.status === "completed") {
+      return;
+    }
+
+    const timer = setInterval(async () => {
+      try {
+        const latest = await getPayoutStatus(payoutInfo.transaction_id);
+        setPayoutInfo(latest);
+      } catch {
+      }
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [payoutInfo]);
 
   return (
     <main className="page-shell">
@@ -483,6 +536,59 @@ export default function DashboardClient({ storyHtml }) {
           value={`₹${metrics?.total_payout ?? 0}`}
           help="Total disbursed so far"
         />
+        <MetricCard
+          title="Earnings Protected"
+          value={`₹${myClaims
+            .filter((c) => {
+              if (!c.created_at) return false;
+              const created = new Date(c.created_at);
+              const now = new Date();
+              return (
+                created.getFullYear() === now.getFullYear() &&
+                created.getMonth() === now.getMonth() &&
+                Number(c.approved_payout || 0) > 0
+              );
+            })
+            .reduce((sum, c) => sum + Number(c.approved_payout || 0), 0)
+            .toFixed(2)}`}
+          help="Payouts received this month"
+        />
+        <MetricCard
+          title="Active Coverage"
+          value={`₹${dashboard?.current_policy?.coverage_per_week ?? 0}`}
+          help="Current weekly coverage amount"
+        />
+        <MetricCard
+          title="Coverage Used"
+          value={`${(() => {
+            const coverageLimit = Number(dashboard?.current_policy?.coverage_per_week || 0);
+            const payoutsReceived = myClaims.reduce((sum, c) => sum + Number(c.approved_payout || 0), 0);
+            if (!coverageLimit) return 0;
+            return Math.min(100, Math.round((payoutsReceived / coverageLimit) * 100));
+          })()}%`}
+          help="Payouts received vs coverage limit"
+        />
+      </section>
+
+      <section className="status-panel">
+        <p className="metric-title">Coverage Progress</p>
+        {(() => {
+          const coverageLimit = Number(dashboard?.current_policy?.coverage_per_week || 0);
+          const payoutsReceived = myClaims.reduce((sum, c) => sum + Number(c.approved_payout || 0), 0);
+          const usedPct = coverageLimit ? Math.min(100, (payoutsReceived / coverageLimit) * 100) : 0;
+          return (
+            <>
+              <div className="score-bar" style={{ width: "100%", height: "10px", background: "#e0e0e0", borderRadius: "6px", overflow: "hidden" }}>
+                <div
+                  style={{ width: `${usedPct}%`, height: "100%", background: "linear-gradient(140deg, #0e5a8a, #f25c3a)", borderRadius: "6px" }}
+                />
+              </div>
+              <p style={{ marginTop: "0.45rem" }}>
+                ₹{payoutsReceived.toFixed(2)} used out of ₹{coverageLimit.toFixed(2)}
+              </p>
+            </>
+          );
+        })()}
       </section>
 
       <section className="forms-grid">
@@ -618,11 +724,94 @@ export default function DashboardClient({ storyHtml }) {
         {error && <p className="error">{error}</p>}
       </section>
 
+      {payoutInfo && (
+        <section className="status-panel">
+          <p>
+            <strong>Instant Payout</strong>
+          </p>
+          <p>
+            Transaction ID: <strong>{payoutInfo.transaction_id}</strong>
+          </p>
+          <p>
+            Status: <span className={`status-pill status-${String(payoutInfo.status || "").toLowerCase()}`}>{payoutInfo.status}</span>
+          </p>
+          <p>{payoutInfo.confirmation_message}</p>
+          {payoutInfo.qr_image_url && (
+            <div style={{ marginTop: "0.6rem", display: "grid", gap: "0.45rem" }}>
+              <img
+                src={payoutInfo.qr_image_url}
+                alt="UPI payout QR"
+                width="180"
+                height="180"
+                style={{ borderRadius: "12px", border: "1px solid rgba(26, 30, 36, 0.15)" }}
+              />
+              <small style={{ wordBreak: "break-all", color: "rgba(26, 30, 36, 0.7)" }}>
+                UPI URI: {payoutInfo.upi_uri}
+              </small>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* 🚀 NEW: Fraud Alert Display */}
       <FraudAlert
         fraudResult={fraudResult}
         onClose={() => setFraudResult(null)}
       />
+
+      <section className="tables-grid">
+        <article className="table-card">
+          <h3>Claim Timeline</h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(latestClaimTimeline.length ? latestClaimTimeline : myClaims[myClaims.length - 1]?.timeline || []).map((item, idx) => (
+                  <tr key={`${item.stage}-${idx}`}>
+                    <td className="cap">{item.stage}</td>
+                    <td>{item.at || "Pending"}</td>
+                  </tr>
+                ))}
+                {!latestClaimTimeline.length && !(myClaims[myClaims.length - 1]?.timeline || []).length && (
+                  <tr>
+                    <td colSpan={2}>No timeline available yet</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article className="table-card">
+          <h3>Risk Alerts</h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Alert</th>
+                </tr>
+              </thead>
+              <tbody>
+                {riskAlerts.map((alert, idx) => (
+                  <tr key={`${alert}-${idx}`}>
+                    <td>{alert}</td>
+                  </tr>
+                ))}
+                {!riskAlerts.length && (
+                  <tr>
+                    <td>No active weather risk alerts</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
 
       <section className="tables-grid">
         <article className="table-card">
@@ -634,6 +823,7 @@ export default function DashboardClient({ storyHtml }) {
                   <th>Claim ID</th>
                   <th>Status</th>
                   <th>Payout</th>
+                  <th>Instant Payout</th>
                 </tr>
               </thead>
               <tbody>
@@ -651,11 +841,20 @@ export default function DashboardClient({ storyHtml }) {
                         </span>
                       </td>
                       <td>₹{item.approved_payout}</td>
+                      <td>
+                        <button
+                          type="button"
+                          disabled={busy === "payout" || Number(item.approved_payout || 0) <= 0}
+                          onClick={() => startPayout(item)}
+                        >
+                          {busy === "payout" ? "Processing..." : "Pay via UPI"}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 {!myClaims.length && (
                   <tr>
-                    <td colSpan={3}>No claims found for your account yet</td>
+                    <td colSpan={4}>No claims found for your account yet</td>
                   </tr>
                 )}
               </tbody>

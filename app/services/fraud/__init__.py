@@ -17,6 +17,8 @@ from .location_detector import LocationSpoofingDetector
 from .collusion_detector import CollusionRingDetector
 from .image_detector import ImageFraudDetector
 from .base_detector import FraudResult, FraudAction
+from .advanced_detection import detect_advanced_signals
+
 try:
     from .nlp_detector import nlp_detector
 except Exception:
@@ -78,7 +80,9 @@ class FraudEngine:
 
         if LocationIsolationDetector is not None:
             try:
-                self.location_isolation = LocationIsolationDetector(model_path=f"{model_dir}/location_isolation.pkl")
+                self.location_isolation = LocationIsolationDetector(
+                    model_path=f"{model_dir}/location_isolation.pkl"
+                )
             except Exception:
                 self.location_isolation = None
 
@@ -86,8 +90,10 @@ class FraudEngine:
         self.location_autoenc = None
         if LocationAutoencoder is not None:
             try:
-                _la = LocationAutoencoder(model_path=f"{model_dir}/location_autoencoder.h5")
-                if getattr(_la, 'model', None) is not None:
+                _la = LocationAutoencoder(
+                    model_path=f"{model_dir}/location_autoencoder.h5"
+                )
+                if getattr(_la, "model", None) is not None:
                     self.location_autoenc = _la
             except Exception:
                 self.location_autoenc = None
@@ -96,7 +102,7 @@ class FraudEngine:
         if ImageCNNDetector is not None:
             try:
                 _cnn = ImageCNNDetector(model_path=f"{model_dir}/image_cnn.h5")
-                if getattr(_cnn, 'model', None) is not None:
+                if getattr(_cnn, "model", None) is not None:
                     self.image_cnn = _cnn
             except Exception:
                 self.image_cnn = None
@@ -133,8 +139,8 @@ class FraudEngine:
         detector_results: List[FraudResult] = []
 
         # Layer 1: Location spoofing
-        if 'gps_history' in claim_data or 'trajectory' in claim_data:
-            gps_data = claim_data.get('gps_history') or claim_data.get('trajectory')
+        if "gps_history" in claim_data or "trajectory" in claim_data:
+            gps_data = claim_data.get("gps_history") or claim_data.get("trajectory")
             if gps_data:
                 try:
                     loc_result = self.location_detector.detect(gps_data)
@@ -143,17 +149,19 @@ class FraudEngine:
                     pass
 
         # Layer 2: Collusion detection
-        if 'claims_in_area' in claim_data:
+        if "claims_in_area" in claim_data:
             try:
-                col_result = self.collusion_detector.detect_rings(claim_data['claims_in_area'])
+                col_result = self.collusion_detector.detect_rings(
+                    claim_data["claims_in_area"]
+                )
                 detector_results.append(col_result)
             except Exception:
                 pass
 
         # Layer 3: Image fraud detection
-        if 'image_path' in claim_data or 'images' in claim_data:
-            img_path = claim_data.get('image_path')
-            images = claim_data.get('images') or ([img_path] if img_path else [])
+        if "image_path" in claim_data or "images" in claim_data:
+            img_path = claim_data.get("image_path")
+            images = claim_data.get("images") or ([img_path] if img_path else [])
             for img in images:
                 try:
                     img_result = self.image_detector.detect(img)
@@ -162,28 +170,40 @@ class FraudEngine:
                     continue
 
         # Layer 4: NLP review fraud detection
-        if 'review_text' in claim_data:
+        if "review_text" in claim_data:
             try:
-                nlp = getattr(self, 'nlp_detector', None)
+                nlp = getattr(self, "nlp_detector", None)
                 if nlp is not None:
-                    nlp_result = nlp.detect(review_text=claim_data.get('review_text', ''), delivery_data=claim_data.get('delivery_data', {}))
+                    nlp_result = nlp.detect(
+                        review_text=claim_data.get("review_text", ""),
+                        delivery_data=claim_data.get("delivery_data", {}),
+                    )
                     detector_results.append(nlp_result)
             except Exception:
                 pass
 
         # Layer 6: Temporal LSTM-based detector
         try:
-            temporal = getattr(self, 'temporal_detector', None)
+            temporal = getattr(self, "temporal_detector", None)
             if temporal is not None:
                 # Prefer explicit claim history list for temporal detector
-                claim_history = claim_data.get('claim_history')
+                claim_history = claim_data.get("claim_history")
                 if not isinstance(claim_history, list):
                     # fall back if worker_history contains a list of claims
-                    claim_history = claim_data.get('worker_history') if isinstance(claim_data.get('worker_history'), list) else claim_history
+                    claim_history = (
+                        claim_data.get("worker_history")
+                        if isinstance(claim_data.get("worker_history"), list)
+                        else claim_history
+                    )
                 if not isinstance(claim_history, list):
                     claim_history = []
 
-                worker_id = claim_data.get('worker_id') or claim_data.get('worker') or claim_data.get('worker_ref') or 'unknown'
+                worker_id = (
+                    claim_data.get("worker_id")
+                    or claim_data.get("worker")
+                    or claim_data.get("worker_ref")
+                    or "unknown"
+                )
                 try:
                     temp_result = temporal.detect(worker_id, claim_history)
                     detector_results.append(temp_result)
@@ -192,10 +212,31 @@ class FraudEngine:
         except Exception:
             pass
 
+        # Advanced Layer: GPS spoofing, teleportation, weather mismatch, collusion burst
+        try:
+            advanced_raw = detect_advanced_signals(claim_data)
+            if advanced_raw and isinstance(advanced_raw, dict):
+                detector_results.append(
+                    FraudResult(
+                        fraud_score=int(advanced_raw.get("fraud_score", 0)),
+                        action=FraudAction(
+                            str(advanced_raw.get("action", "REVIEW")).upper()
+                        ),
+                        reason=str(
+                            advanced_raw.get("reason", "Advanced detector signal")
+                        ),
+                        confidence=int(advanced_raw.get("confidence", 75)),
+                        detector_name="AdvancedFraudDetector",
+                        metadata=advanced_raw.get("metadata"),
+                    )
+                )
+        except Exception:
+            pass
+
         # Layer 5: Predictive Scorer (combines all results)
         if detector_results:
-            worker_history = claim_data.get('worker_history', {})
-            scorer = getattr(self, 'predictive_scorer', None)
+            worker_history = claim_data.get("worker_history", {})
+            scorer = getattr(self, "predictive_scorer", None)
             if scorer is not None:
                 try:
                     final_result = scorer.predict(detector_results, worker_history)
@@ -209,34 +250,39 @@ class FraudEngine:
                             "ImageFraudDetector": 0.20,
                             "NLPFraudDetector": 0.15,
                             "TemporalFraudDetector": 0.20,
+                            "AdvancedFraudDetector": 0.25,
                         }
                         total_score = 0.0
                         total_weight = 0.0
                         for r in detector_results:
                             if isinstance(r, dict):
-                                name = r.get('detector_name')
+                                name = r.get("detector_name")
                                 try:
-                                    score = int(r.get('fraud_score', 0))
+                                    score = int(r.get("fraud_score", 0))
                                 except Exception:
                                     score = 0
                             else:
-                                name = getattr(r, 'detector_name', None)
+                                name = getattr(r, "detector_name", None)
                                 try:
-                                    score = int(getattr(r, 'fraud_score', 0))
+                                    score = int(getattr(r, "fraud_score", 0))
                                 except Exception:
                                     score = 0
                             w = weights.get(name, 0.15)
                             total_score += score * w
                             total_weight += w
 
-                        weighted_score = int(total_score / total_weight) if total_weight > 0 else 0
+                        weighted_score = (
+                            int(total_score / total_weight) if total_weight > 0 else 0
+                        )
                     except Exception:
                         weighted_score = 0
 
                     # If any detector explicitly returns REJECT, boost the weighted score
                     try:
                         any_reject = any(
-                            (getattr(r, 'action').value == "REJECT") if (not isinstance(r, dict) and hasattr(r, 'action')) else (str(r.get('action', '')).upper() == "REJECT")
+                            (getattr(r, "action").value == "REJECT")
+                            if (not isinstance(r, dict) and hasattr(r, "action"))
+                            else (str(r.get("action", "")).upper() == "REJECT")
                             for r in detector_results
                         )
                     except Exception:
@@ -246,7 +292,9 @@ class FraudEngine:
                         weighted_score = max(weighted_score, 60)
 
                     # Choose the stronger signal between the predictive scorer and our weighted rule
-                    final_score = max(int(getattr(final_result, 'fraud_score', 0)), weighted_score)
+                    final_score = max(
+                        int(getattr(final_result, "fraud_score", 0)), weighted_score
+                    )
 
                     # Map to action using final_score thresholds
                     if final_score >= 70:
@@ -260,10 +308,18 @@ class FraudEngine:
                         "fraud_score": final_score,
                         "action": action.value,
                         "reasons": [r.reason for r in detector_results],
-                        "detector_results": [r.model_dump() if hasattr(r, 'model_dump') else (r if isinstance(r, dict) else vars(r)) for r in detector_results],
+                        "detector_results": [
+                            r.model_dump()
+                            if hasattr(r, "model_dump")
+                            else (r if isinstance(r, dict) else vars(r))
+                            for r in detector_results
+                        ],
                         "final_decision": final_result.reason,
-                        "confidence": max(getattr(final_result, 'confidence', 50), 70 if final_score >= 40 else 90),
-                        "legacy_signals": []
+                        "confidence": max(
+                            getattr(final_result, "confidence", 50),
+                            70 if final_score >= 40 else 90,
+                        ),
+                        "legacy_signals": [],
                     }
                 except Exception:
                     # fallback to simple aggregation if scorer fails
@@ -277,21 +333,22 @@ class FraudEngine:
                     "ImageFraudDetector": 0.20,
                     "NLPFraudDetector": 0.15,
                     "TemporalFraudDetector": 0.20,
+                    "AdvancedFraudDetector": 0.25,
                 }
                 total_score = 0.0
                 total_weight = 0.0
                 for r in detector_results:
                     # detector_name may be an attribute or a dict key
                     if isinstance(r, dict):
-                        name = r.get('detector_name')
+                        name = r.get("detector_name")
                         try:
-                            score = int(r.get('fraud_score', 0))
+                            score = int(r.get("fraud_score", 0))
                         except Exception:
                             score = 0
                     else:
-                        name = getattr(r, 'detector_name', None)
+                        name = getattr(r, "detector_name", None)
                         try:
-                            score = int(getattr(r, 'fraud_score', 0))
+                            score = int(getattr(r, "fraud_score", 0))
                         except Exception:
                             score = 0
 
@@ -306,7 +363,9 @@ class FraudEngine:
             # If any detector explicitly returns REJECT, boost final score to at least review level
             try:
                 any_reject = any(
-                    (getattr(r, 'action').value == "REJECT") if (not isinstance(r, dict) and hasattr(r, 'action')) else (str(r.get('action', '')).upper() == "REJECT")
+                    (getattr(r, "action").value == "REJECT")
+                    if (not isinstance(r, dict) and hasattr(r, "action"))
+                    else (str(r.get("action", "")).upper() == "REJECT")
                     for r in detector_results
                 )
             except Exception:
@@ -327,10 +386,15 @@ class FraudEngine:
                 "fraud_score": final_score,
                 "action": action.value,
                 "reasons": [r.reason for r in detector_results],
-                "detector_results": [r.model_dump() if hasattr(r, 'model_dump') else (r if isinstance(r, dict) else vars(r)) for r in detector_results],
+                "detector_results": [
+                    r.model_dump()
+                    if hasattr(r, "model_dump")
+                    else (r if isinstance(r, dict) else vars(r))
+                    for r in detector_results
+                ],
                 "final_decision": f"Aggregated score {final_score}",
                 "confidence": 70 if final_score >= 40 else 90,
-                "legacy_signals": []
+                "legacy_signals": [],
             }
 
         return {
@@ -340,8 +404,14 @@ class FraudEngine:
             "detector_results": [],
             "final_decision": "No fraud signals detected",
             "confidence": 100,
-            "legacy_signals": []
+            "legacy_signals": [],
         }
 
 
-__all__ = ["FraudEngine", "FraudSignal", "LocationSpoofingDetector", "CollusionRingDetector", "ImageFraudDetector"]
+__all__ = [
+    "FraudEngine",
+    "FraudSignal",
+    "LocationSpoofingDetector",
+    "CollusionRingDetector",
+    "ImageFraudDetector",
+]

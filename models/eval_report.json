@@ -1,0 +1,86 @@
+{
+  "model_metadata": {
+    "model_version": "risk-v3",
+    "feature_schema_version": "risk-features-v1",
+    "trained_at": null,
+    "training_mode": "untrained",
+    "scenario_catalog_version": "scenarios-v1"
+  },
+  "regression_metrics": {
+    "available": false,
+    "reason": "missing_sklearn_or_model"
+  },
+  "stress_test": {
+    "scenario_catalog_version": "scenarios-v1",
+    "total_scenarios": 5,
+    "passed": true,
+    "failures": [],
+    "results": [
+      {
+        "scenario": "extreme_rain_flood",
+        "risk_score": 78.0,
+        "risk_band": "High",
+        "confidence": 98,
+        "confidence_band": "high",
+        "recommended_action": "REVIEW_PRIORITY",
+        "reason_codes": [
+          "WEATHER_EXTREME_FORECAST"
+        ]
+      },
+      {
+        "scenario": "heatwave_hazardous_aqi",
+        "risk_score": 81.0,
+        "risk_band": "High",
+        "confidence": 98,
+        "confidence_band": "high",
+        "recommended_action": "REVIEW_PRIORITY",
+        "reason_codes": [
+          "WEATHER_EXTREME_FORECAST",
+          "AQI_SEVERE"
+        ]
+      },
+      {
+        "scenario": "new_worker_sparse_data",
+        "risk_score": 50.0,
+        "risk_band": "Medium",
+        "confidence": 98,
+        "confidence_band": "high",
+        "recommended_action": "AUTO_APPROVE",
+        "reason_codes": [
+          "BASELINE_RISK_POLICY"
+        ]
+      },
+      {
+        "scenario": "adversarial_extreme_values",
+        "risk_score": 66.0,
+        "risk_band": "High",
+        "confidence": 85.0,
+        "confidence_band": "high",
+        "recommended_action": "REVIEW",
+        "reason_codes": [
+          "CLAIM_RATE_HIGH",
+          "LOW_EXPERIENCE",
+          "WEATHER_EXTREME_FORECAST"
+        ]
+      },
+      {
+        "scenario": "high_claim_frequency",
+        "risk_score": 60.0,
+        "risk_band": "High",
+        "confidence": 98,
+        "confidence_band": "high",
+        "recommended_action": "REVIEW",
+        "reason_codes": [
+          "CLAIM_RATE_HIGH"
+        ]
+      }
+    ],
+    "model_metadata": {
+      "model_version": "risk-v3",
+      "feature_schema_version": "risk-features-v1",
+      "trained_at": null,
+      "training_mode": "untrained",
+      "scenario_catalog_version": "scenarios-v1"
+    }
+  }
+}

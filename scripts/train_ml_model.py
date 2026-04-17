@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.services.ml_risk_model import risk_model
+from app.services.ml_risk import risk_model
 
 
 def main():
