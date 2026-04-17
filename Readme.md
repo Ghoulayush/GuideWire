@@ -9,7 +9,12 @@ Team Trailblazers | Food Delivery Persona (Zomato / Swiggy)
 Gig delivery workers lose income when city disruptions happen (heavy rain, flood alerts, pollution spikes, curfew/social disruption). Traditional claims-based insurance is too slow and too complex for daily-wage workflows.
 
 ---
+## Demo
 
+- YouTube (project working): https://youtu.be/3Ctuljb2Hz0?si=ovQXZQUNiSNspLaC
+- Google Drive (demo folder): https://drive.google.com/drive/folders/1uZdU1CIAauEIvR4QcFW1hgWTwGMJb9Fs?usp=drive_link
+
+---
 ## What GigShield Does
 
 GigShield uses a parametric model:
