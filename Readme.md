@@ -1,293 +1,184 @@
-# 🛡️ GigShield — AI-Powered Parametric Income Insurance
-### Guidewire DEVTrails 2026 | Phase 2 Submission
-> **Team Trailblazers** · Food Delivery Persona — Zomato / Swiggy
+# GigShield - AI-Powered Parametric Income Insurance
+### Guidewire DEVTrails 2026 | Phase 3 Submission
+Team Trailblazers | Food Delivery Persona (Zomato / Swiggy)
 
 ---
 
-## 🚨 The Problem
+## Problem
 
-India's 15 million gig delivery workers lose **20–30% of monthly income** to disruptions they cannot control. When rain hits, when pollution spikes, when a curfew drops — orders stop. Income stops. Nothing compensates them.
-
-**Rajesh Kumar, a Swiggy rider in Mumbai, earns ₹500/day. During monsoon season, heavy rainfall blocks deliveries for hours at a time. He has zero income protection. No claim process exists for him.**
-
-Traditional insurance fails gig workers because:
-- Monthly premiums don't match a week-to-week earning cycle
-- Manual claims take days — gig workers need money the same day
-- Processes are too complex for daily-wage workers
+Gig delivery workers lose income when city disruptions happen (heavy rain, flood alerts, pollution spikes, curfew/social disruption). Traditional claims-based insurance is too slow and too complex for daily-wage workflows.
 
 ---
 
-## 💡 Our Solution
+## What GigShield Does
 
-GigShield is a **parametric income insurance platform** — payouts are triggered by objective external data, not worker-filed claims.
+GigShield uses a parametric model:
 
-- Worker pays **₹49–₹99/week**
-- System monitors live weather + AQI APIs **every 30 minutes**
-- Threshold crossed → AI validates → **UPI payout sent instantly**
-- **No forms. No phone calls. No waiting.**
+- Worker onboarding -> AI risk scoring -> dynamic weekly premium.
+- External disruption signals + trigger rules evaluate payout eligibility.
+- Claim decisions go through multi-layer fraud detection.
+- Approved claims can be pushed through instant payout simulation and UPI flow.
 
-**Coverage:** Income loss only. Excludes health, vehicle, accidents, war, pandemics, and terrorism.
+Core principle: no manual worker paperwork for trigger-based claims.
 
 ---
 
-## ✅ Phase 2 — What We Built & Demonstrated
+## Phase 3 - Latest Work Completed
 
-Every feature below is **live and demonstrated** in our Phase 2 demo video:
+This repository now includes the Phase 3 scope in code and demo flow:
 
-| Feature | Status | Demonstrated |
+1. Model hardening and diagnostics
+- Canonical risk model path with metadata (`model_version`, `feature_schema_version`, `trained_at`, `training_mode`).
+- Input sanitization, clipping, fallback handling, and guardrail-based recommendations.
+- Runtime diagnostics exposed via health endpoint (`model_runtime_diagnostics`).
+
+2. Scenario-driven robustness
+- Synthetic stress scenarios for rain/flood, heatwave + AQI, low-signal payloads, and adversarial extremes.
+- Bounded output (`0-100`) with confidence bands and reason codes.
+
+3. Fraud engine integration in runtime flow
+- `/events/trigger` builds claim evidence (GPS trail, weather mismatch checks, area burst checks, historical pattern).
+- Weighted fraud decisioning with advanced detector integration.
+- Decision bands used in frontend: approve (<40), review (40-69), reject (>=70).
+
+4. Subscription and payment integration
+- Razorpay order + verify endpoints.
+- Live mode when keys are configured, mock mode fallback when keys are missing.
+- Subscription status and admin subscription listing endpoints.
+
+5. Admin and insurer operations interfaces
+- Admin console for workers, policies, claims, subscriptions.
+- Insurer dashboard for loss ratio, reserves, and high-risk zone planning.
+
+---
+
+## Current Deployment Status
+
+- Frontend: deployed
+- Backend: deployed
+
+Use your live base URLs:
+
+- Frontend URL: `<YOUR_FRONTEND_URL>`
+- Backend URL: `<YOUR_BACKEND_URL>`
+
+Set frontend API routing using `NEXT_PUBLIC_API_URL=<YOUR_BACKEND_URL>` in your frontend deployment environment.
+
+---
+
+## Demo Walkthrough (How the live demo works)
+
+1. Worker authentication
+- Open `<FRONTEND_URL>/auth`.
+- Sign up or log in with Supabase auth.
+
+2. Worker onboarding and policy creation
+- Go to Dashboard and submit worker details.
+- Backend computes risk + premium and creates policy.
+
+3. Event simulation and claim decision
+- Trigger disruption event from dashboard.
+- Backend runs trigger logic + fraud engine.
+- Response includes claim timeline, fraud score, and decision message.
+
+4. Subscription checkout
+- Go to `<FRONTEND_URL>/subscription`.
+- Choose weekly plan (Essential/Growth/Shield Max).
+- Razorpay flow runs in live mode if keys exist; mock mode otherwise.
+
+5. Payout flow
+- From claims table, start payout.
+- Track payout status and UPI QR details.
+
+6. Admin/insurer access
+- Admin login: `<FRONTEND_URL>/admin/login`
+- Admin dashboard: `<FRONTEND_URL>/admin`
+- Insurer metrics dashboard: `<FRONTEND_URL>/admin/insurer`
+
+Current admin credentials (demo only):
+- Email: `admin@gigshield.local`
+- Password: `admin123`
+
+---
+
+## System Architecture
+
+### Backend (FastAPI)
+- Worker onboarding, risk scoring, premium generation.
+- Trigger evaluation and automated claim decisioning.
+- Fraud analysis and insurer analytics.
+- Razorpay order/verification + subscription records.
+
+### Frontend (Next.js)
+- Supabase login/sign-up for worker flow.
+- Dashboard for onboarding, trigger simulation, claim and payout view.
+- Subscription checkout page with Razorpay integration.
+- Admin operations + insurer metrics views.
+
+### Data Layer
+- Supabase/Postgres persistence for workers, policies, claims, events, subscriptions.
+- In-memory fallback path also exists for non-persistent runtime.
+
+---
+
+## Key API Endpoints
+
+| Method | Endpoint | Purpose |
 |---|---|---|
-| FastAPI backend running | ✅ | Server boot shown |
-| Random Forest ML model loaded | ✅ | Risk score 64/100 shown live |
-| Background monitor (30 min polling) | ✅ | Active on startup |
-| Worker onboarding → risk scoring | ✅ | Rajesh Kumar demo |
-| Dynamic premium calculation | ✅ | ₹99/week shown with breakdown |
-| Parametric trigger detection | ✅ | 50mm rainfall threshold crossed |
-| Auto-claim generation | ✅ | No worker action needed |
-| 6-layer fraud detection | ✅ | All layers passed, score: 0 |
-| Instant payout simulation | ✅ | ₹1,050 credited to UPI |
+| POST | `/workers/onboard` | Register worker, score risk, issue policy |
+| POST | `/events/trigger` | Trigger disruption and process claim/fraud decision |
+| GET | `/dashboard` | Dashboard aggregate data |
+| GET | `/analytics/metrics` | Platform metrics |
+| GET | `/insurer/metrics` | Loss ratio and reserve metrics |
+| GET | `/fraud/stats` | Fraud outcome statistics |
+| GET | `/health` | Health + model diagnostics |
+| GET | `/test/ml` | ML sanity check endpoint |
+| POST | `/payments/razorpay/order` | Create Razorpay order |
+| POST | `/payments/razorpay/verify` | Verify payment signature |
+| GET | `/payments/subscriptions/{customer_email}` | Customer subscription status |
+| GET | `/payments/subscriptions` | Admin subscription listing |
+| POST | `/api/payout` | Initiate payout |
+| GET | `/api/payout/{transaction_id}` | Track payout status |
 
 ---
 
-## 🧠 AI / ML Architecture
+## Repository Structure
 
-### Model 1 — Random Forest Risk Engine
-
-Trained on **50,000 synthetic samples** across **12 real-time risk features:**
-
-| Feature | Description | Source |
-|---|---|---|
-| `historical_rain_risk` | City-level rainfall frequency | IMD historical data |
-| `historical_heat_risk` | Heat event frequency | IMD records |
-| `historical_flood_risk` | Derived from rain + city topology | NDMA flood zones |
-| `weather_forecast_risk` | 7-day ahead forecast score | OpenWeatherMap |
-| `season_factor` | Monsoon 0.8 / Summer 0.6 / Winter 0.3 | IMD seasonal classification |
-| `location_density` | Urban density multiplier | Census city data |
-| `platform_volatility` | Platform disruption exposure | Delivery platform patterns |
-| `worker_experience_days` | Normalised experience (loyalty) | Worker onboarding data |
-| `worker_avg_daily_income` | Normalised income bracket | Worker declared income |
-| `historical_claim_rate` | Past claim frequency | Internal claims DB |
-| `current_aqi` | Live AQI normalised 0–1 | AQICN API |
-| `is_festival_season` | Oct–Dec and Mar–Apr flag | Cultural calendar |
-
-**Model configuration:**
-- Algorithm: Random Forest Regressor (scikit-learn)
-- Estimators: 100 trees · Max depth: 12
-- Split: 80% train / 20% test · R² evaluated on test set
-- Auto-trains on startup if no saved model found
-- Persisted to `models/gigshield_risk_model.pkl` after training
-
-**Live demo result — Rajesh Kumar, Mumbai:**
-- Risk score: **64 / 100**
-- Risk band: **High**
-- Reasoning: Mumbai rain risk 85/100 + flood risk 90/100 + active monsoon season (factor 0.8)
-
-**City risk mapping (IMD + NDMA aligned):**
-
-| City | Rain Risk | Heat Risk | Flood Risk |
-|---|---|---|---|
-| Mumbai | 85 | 40 | 90 |
-| Kolkata | 80 | 65 | 85 |
-| Chennai | 75 | 70 | 80 |
-| Delhi | 30 | 85 | 20 |
-| Bangalore | 50 | 35 | 30 |
-| Hyderabad | 45 | 70 | 35 |
-
----
-
-### Model 2 — Dynamic Premium Calculator
-
-**Formula:** `Base + Risk Loading + Location Adjustment + Experience Adjustment + Forecast Adjustment`
-
-| Component | Logic | Range |
-|---|---|---|
-| Base Premium | 2% of weekly income | Anchored to earnings |
-| Risk Loading | 0–3% of income scaled to risk score | Higher score = higher loading |
-| Location Adjustment | ±10% for coastal/flood-prone cities | Mumbai/Chennai = +10% |
-| Experience Adjustment | −8% loyalty (6+ months) / +5% new worker | Rewards loyalty |
-| Forecast Adjustment | ±15% based on 7-day forecast | Dynamic weekly update |
-
-**Output:** Clamped ₹49–₹99/week · Coverage = 80% of weekly income
-
-**Live demo result — Rajesh Kumar:**
-- Risk score 64 → High band → premium ₹99/week
-- Weekly coverage: **₹2,800**
-
----
-
-### Model 3 — 6-Layer Fraud Detection Engine
-
-Every auto-claim passes through all 6 layers before payout is released:
-
-| Layer | Check | Flag Condition |
-|---|---|---|
-| 1. Location spoofing | GPS vs disruption zone | Worker > 5km outside affected area |
-| 2. Collusion detection | Cluster of accounts, same network | Multiple accounts filing simultaneously |
-| 3. Duplicate prevention | Same worker, same trigger, same day | Already paid today |
-| 4. Earnings consistency | Declared vs estimated income | > 40% deviation |
-| 5. Velocity check | Claims vs historical average | 3× above monthly norm |
-| 6. Temporal anomaly | Claim timing vs disruption window | Filed outside event timeframe |
-
-**Live demo result — Rajesh Kumar claim:**
-- Fraud score: **0**
-- Confidence: **85%**
-- All 6 layers: **PASSED**
-- Action: **APPROVED**
-
-**Phase 3:** Isolation Forest anomaly detection replaces rule-based scoring with ML-probability fraud model.
-
----
-
-## ⚡ Parametric Trigger System
-
-Thresholds defined from authoritative government and health sources:
-
-| # | Trigger | Threshold | Justification | Payout |
-|---|---|---|---|---|
-| 1 | Heavy Rain | > 50mm/day | IMD defines heavy rain as > 64.4mm — 50mm is early warning | 70% daily earning |
-| 2 | Extreme Heat | > 45°C / 3hrs | WHO outdoor worker heat stress threshold | 50% daily earning |
-| 3 | Severe Pollution | AQI > 300 / 4hrs | CPCB Severe category — outdoor work advisory | 60% daily earning |
-| 4 | Flood Alert | NDMA bulletin | National Disaster Management Authority alert | 100% daily earning |
-| 5 | Social Disruption | Admin-verified | Cross-verified with news API + admin audit trail | 80% daily earning |
-
-**Live demo result:**
-- Trigger: Heavy Rain
-- Rainfall detected: **58mm** (threshold: 50mm) ✅
-- Auto-claim: **generated**
-- Payout: **₹1,050 credited to UPI**
-
-> One trigger per worker per day. Combined disruptions → highest applicable payout.
-
----
-
-## 🔒 Adversarial Defense & Anti-Spoofing Strategy
-
-Parametric insurance is uniquely vulnerable — payouts fire on data, not human review. GigShield is hardened at every layer.
-
-**GPS Spoofing Defense**
-Location jumps > 10km in under 5 minutes flagged as teleportation. Declared pincode cross-validated against real-time location at claim time.
-
-**Fake Weather Claim Prevention**
-Workers cannot self-report disruptions. Every trigger is driven exclusively by OpenWeatherMap + AQICN data. Claims only initiate when API threshold is crossed and worker's registered city matches affected zone.
-
-**Coordinated Fraud Detection**
-Multiple accounts from same device, network, or registration cluster filing simultaneously are quarantined. Velocity checks flag 3× above monthly average.
-
-**Identity Verification**
-Workers tied to delivery platform partner ID. UPI handle validated against registered name. Device fingerprinting prevents multi-account abuse.
-
-**Duplicate & Replay Prevention**
-Every claim assigned unique hash: worker ID + trigger type + city + timestamp. Duplicate submissions rejected at DB level regardless of session.
-
-**Admin Event Security**
-Social disruption triggers require verified admin with 2FA. Full audit trail on every action. No worker-facing interface can create or modify triggers.
-
-> **Design principle:** Every layer protects honest workers from abuse while ensuring legitimate claims are never wrongly blocked.
-
----
-
-## ⚠️ Coverage Exclusions
-
-Per standard insurance domain requirements, GigShield does **NOT** pay out for:
-- War, armed conflict, or military operations
-- Government-declared pandemics or public health emergencies
-- Terrorism or acts of political violence
-- Nuclear, chemical, or biological incidents
-- Worker voluntary platform deactivation or ban
-- Pre-existing zone restrictions active at policy purchase
-- Income loss from worker negligence or misconduct
-
-Workers acknowledge all exclusions via mandatory policy acceptance at onboarding.
-
----
-
-## ⚙️ Tech Stack
-
-| Layer | Technology | Why |
-|---|---|---|
-| Frontend (Phase 1) | HTML, CSS, JavaScript | Core flow validated fast |
-| Frontend (Phase 2+) | Next.js + Tailwind CSS | PWA — no install, WhatsApp shareable |
-| Backend | Python FastAPI | Same language as ML, auto-generates API docs |
-| Database | PostgreSQL + Supabase | Free hosted, built-in auth, 4 core tables |
-| ML / AI | scikit-learn Random Forest | 50k samples, no GPU, runs on any machine |
-| Weather | OpenWeatherMap API | Free tier, real rainfall + temperature |
-| AQI | AQICN API | Free tier, real AQI by city |
-| Payments | Razorpay Sandbox | UPI simulation — Phase 3 |
-
----
-
-## 🗺️ System Workflow
-
-```
-Worker registers → name, city, platform, UPI, daily income
-        ↓
-ML Risk Engine: 12 features → risk score → risk band
-        ↓
-Premium Calculator: personalised weekly rate with full breakdown
-        ↓
-Worker pays via UPI → policy active Mon–Sun
-        ↓
-Background monitor polls OpenWeatherMap + AQICN every 30 mins
-        ↓
-Threshold crossed → disruption event logged
-        ↓
-Auto-claim created → 6-layer fraud validation runs
-        ↓
-All layers pass → payout initiated to UPI instantly
-        ↓
-Worker notified · dashboard updated · admin log written
+```text
+GuideWire/
+|- app/
+|  |- main.py
+|  |- db.py
+|  |- repositories/
+|  |- services/
+|  |  |- ml_risk.py
+|  |  |- premium_calculator.py
+|  |  |- triggers.py
+|  |  |- fraud/
+|  |  |- predictive_analytics.py
+|  |  |- payout.py
+|- frontend/
+|  |- src/app/
+|  |  |- auth/
+|  |  |- home/
+|  |  |- dashboard/
+|  |  |- simulation/
+|  |  |- subscription/
+|  |  |- admin/
+|  |- src/components/
+|  |- src/lib/
+|- tests/
+|- models/
+|- plan.md
+|- AGENTS.md
 ```
 
 ---
 
-## 📁 Repository Structure
+## Local Setup
 
-```
-GigShield/
-├── app/
-│   ├── main.py                   # FastAPI app, startup ML training
-│   ├── db.py                     # Supabase connection
-│   ├── schemas.py                # Pydantic models
-│   └── services/
-│       ├── ml_risk.py            # Random Forest (50k samples, 12 features)
-│       ├── premium_calculator.py # Dynamic premium engine
-│       ├── triggers.py           # OpenWeatherMap + AQICN polling
-│       ├── fraud.py              # 6-layer fraud detection
-│       ├── risk.py               # Risk aggregation
-│       └── integrations.py       # External API wrappers
-│
-├── frontend/
-│   ├── src/app/
-│   │   ├── auth/                 # Login / registration
-│   │   ├── dashboard/            # Worker dashboard
-│   │   ├── plans/                # Coverage tier selection
-│   │   └── page.js               # Landing page
-│   └── components/
-│
-├── models/
-│   ├── gigshield_risk_model.pkl  # Trained Random Forest
-│   └── gigshield_scaler.pkl      # Feature scaler
-│
-├── schema.sql
-├── requirements.txt
-└── test_db.py
-```
+### Backend
 
----
-
-## 🗄️ Database Schema
-
-| Table | Purpose |
-|---|---|
-| `workers` | Profile, city, platform, UPI handle, earnings tier |
-| `policies` | Active weekly coverage, premium, coverage amount, status |
-| `claims` | Trigger type, payout amount, fraud score, validation status |
-| `disruption_events` | API-detected events by city, value, source, timestamp |
-
----
-
-## 🚀 Setup
-
-**Backend**
 ```bash
 git clone https://github.com/Ghoulayush/GuideWire.git
 cd GuideWire
@@ -295,70 +186,70 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-ML model trains automatically on first startup. Loads from `models/` on subsequent runs.
+### Frontend
 
-**Frontend**
 ```bash
 cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm dev
+```
+
+Frontend production commands:
+
+```bash
+pnpm build
+pnpm start
 ```
 
 ---
 
-## 🔌 API Endpoints
+## Environment Variables (names only)
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/workers/onboard` | Register worker, ML risk score, create policy |
-| POST | `/events/trigger` | Fire disruption event manually |
-| POST | `/api/simulate/rain` | Simulate full rain trigger end-to-end |
-| GET | `/dashboard` | Active policies, claims, payout summary |
-| GET | `/analytics/metrics` | Full metrics breakdown |
-| GET | `/fraud/stats` | Fraud detection layer summary |
-| GET | `/health` | Service health check |
-| GET | `/test/ml` | Verify ML model loaded and predicting |
+Backend:
+- `DATABASE_URL`
+- `RAZORPAY_KEY_ID`
+- `RAZORPAY_KEY_SECRET`
+- `USE_DB_PERSISTENCE`
+- `AUTO_TRIGGER_MONITORING`
+- `EXTERNAL_SIGNALS_MODE`
 
----
-
-## 🧪 Live Demo Results
-
-**Worker onboarded:** Rajesh Kumar · Swiggy · Mumbai · ₹500/day
-**Risk score:** 64/100 · High band
-**Weekly premium:** ₹99 · Coverage: ₹2,800
-
-**Trigger fired:** Heavy rain 58mm (threshold 50mm exceeded)
-**Claim:** Auto-generated · No worker action
-**Fraud score:** 0 · All 6 layers passed · Confidence 85%
-**Payout:** ₹1,050 credited to UPI instantly
-
-**System metrics:** 1 worker · 1 policy · 1 claim · ₹1,050 total payout
+Frontend:
+- `NEXT_PUBLIC_API_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_RAZORPAY_KEY_ID`
 
 ---
 
-## 🗓️ Phase Roadmap
+## Validation and Test Coverage
 
-### Phase 1 ✅ — Ideation & Foundation
-Persona research · premium formula · 5 triggers defined · HTML/CSS/JS prototype · README
+Representative tests included:
+- `tests/test_model_hardening.py`
+- `tests/test_premium_api.py`
+- `tests/test_fraud_ensemble.py`
+- `tests/test_fraud_layers_1_3.py`
+- `tests/test_fraud_standardization.py`
+- `tests/test_tf_detectors.py`
 
-### Phase 2 ✅ — Automation & Protection (Current)
-FastAPI backend · Supabase DB · Random Forest ML (50k samples) · dynamic premium · live API triggers · auto-claim pipeline · 6-layer fraud detection · Next.js frontend
-
-### Phase 3 — Scale & Optimise
-Isolation Forest fraud model · Razorpay UPI payout · APScheduler automation · worker forecast dashboard · admin analytics dashboard · final demo video + pitch deck
-
----
-
-## 👥 Team Trailblazers
-
-| Role | Responsibility |
-|---|---|
-| Team Lead / Frontend | Next.js UI, onboarding, dashboard |
-| Backend Engineer | FastAPI, Supabase, trigger pipeline |
-| ML Engineer | Random Forest, premium calculator, fraud engine |
-| Docs & Video | README, demo video, pitch deck |
+These cover model hardening behavior, API flow checks, and fraud-layer validation paths.
 
 ---
 
-*GigShield — protecting gig workers when the city shuts down.*
-*Guidewire DEVTrails 2026 |  Team Trailblazers*
+## Security Note
+
+Current admin login is demo-oriented and frontend credential based. For production-grade security, replace this with server-side role-based auth (Supabase roles / JWT claims / protected backend admin APIs).
+
+---
+
+## Team
+
+Trailblazers
+
+- Frontend and UX
+- Backend and integrations
+- AI/ML and fraud modeling
+- Documentation and demo
+
+---
+
+GigShield protects delivery workers when disruptions stop earnings.
