@@ -1,0 +1,22 @@
+frontend/pnpm-workspace.yaml
+  s_23ac4ed772f955::t_7963af776e8326 1-3
+frontend/package.json
+  s_23ac4ed772f955::t_4992be6049913d 14,16-17
+  s_23ac4ed772f955::t_284ec689850c7d 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "9e971832f68dabb7c1a022fb4f89648be498cb4c",
+  "prompts": {},
+  "sessions": {
+    "s_23ac4ed772f955": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1d99a920bffeiECCO75El19PY7",
+        "model": "gpt-5.2-codex"
+      },
+      "human_author": "Ghoulayush <ramolaayush832@gmail.com>"
+    }
+  }
+}
